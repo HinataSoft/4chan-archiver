@@ -1,1 +1,44 @@
-<h1>ok</h1>
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <title>4chan archiv</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <h1>4chan archiv</h1>
+  <nav><a href="/">Thready</a><a href="/rules.html">Pravidla</a></nav>
+
+  <div class="panel stats" id="stats">načítám…</div>
+
+  <div class="panel">
+    <form class="row" id="add-form">
+      <input type="text" id="url" placeholder="https://boards.4chan.org/g/thread/12345678"
+             autocomplete="off" required>
+      <button type="submit">Stáhnout</button>
+    </form>
+    <div class="error" id="add-error"></div>
+  </div>
+
+  <div class="panel row">
+    <input type="text" id="filter-q" placeholder="hledat v názvu">
+    <select id="filter-status">
+      <option value="">všechny stavy</option>
+      <option value="live">live</option>
+      <option value="dead">dead</option>
+      <option value="error">error</option>
+    </select>
+    <button id="refresh">Obnovit</button>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>Board</th><th>Thread</th><th>Název</th><th>Stav</th><th>Postů</th>
+      <th>Velikost</th><th>Poslední poll</th><th>Zdroj</th><th></th>
+    </tr></thead>
+    <tbody id="threads"></tbody>
+  </table>
+
+  <script type="module" src="/js/dashboard.js"></script>
+</body>
+</html>
