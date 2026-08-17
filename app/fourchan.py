@@ -44,6 +44,9 @@ class FourchanClient:
         self._api = RateLimiter(api_rate)
         self._media = RateLimiter(media_rate)
 
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
     async def _get_json(self, url: str, last_modified: str | None) -> JsonResponse:
         headers = {"If-Modified-Since": last_modified} if last_modified else {}
         await self._api.acquire()

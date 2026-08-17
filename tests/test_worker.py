@@ -34,5 +34,39 @@ async def test_run_stops_after_requested_iterations(cfg, fake, monkeypatch):
     await worker.run(cfg, iterations=2)
 
 
+async def test_run_closes_the_client(cfg, fake, monkeypatch):
+    import httpx
+
+    from app import fourchan
+
+    http = httpx.AsyncClient(transport=fake.transport())
+    monkeypatch.setattr(worker.asyncio, "sleep", _no_sleep)
+    monkeypatch.setattr(worker, "_make_client", lambda cfg: fourchan.FourchanClient(
+        http, api_rate=1000, media_rate=1000))
+
+    await worker.run(cfg, iterations=1)
+
+    assert http.is_closed
+
+
+async def test_run_sleeps_only_between_iterations(cfg, fake, monkeypatch):
+    import httpx
+
+    from app import fourchan
+
+    sleeps = []
+
+    async def counting_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(worker.asyncio, "sleep", counting_sleep)
+    monkeypatch.setattr(worker, "_make_client", lambda cfg: fourchan.FourchanClient(
+        httpx.AsyncClient(transport=fake.transport()), api_rate=1000, media_rate=1000))
+
+    await worker.run(cfg, iterations=2)
+
+    assert sleeps == [worker.TICK_SECONDS]
+
+
 async def _no_sleep(seconds):
     return None

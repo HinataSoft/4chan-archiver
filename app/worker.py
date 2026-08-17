@@ -45,9 +45,17 @@ async def run(cfg: Config, *, iterations: int | None = None) -> None:
             except Exception:
                 log.exception("tick selhal, pokračuji")
             done += 1
-            await asyncio.sleep(TICK_SECONDS)
+            if iterations is None or done < iterations:
+                await asyncio.sleep(TICK_SECONDS)
     finally:
-        conn.close()
+        try:
+            await client.aclose()
+        except Exception:
+            log.exception("chyba při zavírání klienta")
+        try:
+            conn.close()
+        except Exception:
+            log.exception("chyba při zavírání databáze")
 
 
 if __name__ == "__main__":
