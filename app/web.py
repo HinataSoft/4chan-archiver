@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from app import archive, repo
@@ -50,10 +50,11 @@ def create_app(cfg: Config) -> FastAPI:
 
     @app.get("/api/threads")
     def list_threads(status: str | None = None, board: str | None = None,
-                     q: str | None = None, limit: int = 100, offset: int = 0,
+                     q: str | None = None, limit: int = Query(100, ge=1, le=500),
+                     offset: int = Query(0, ge=0),
                      conn=Depends(get_conn)):
         rows = repo.list_threads(conn, status=status, board=board, q=q,
-                                 limit=min(limit, 500), offset=offset)
+                                 limit=limit, offset=offset)
         return {"threads": [thread_json(r) for r in rows]}
 
     @app.delete("/api/threads/{thread_id}", status_code=204)

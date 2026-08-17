@@ -52,6 +52,40 @@ async def test_list_threads_with_filters(api, cfg, now):
     assert len((await api.get("/api/threads?status=dead")).json()["threads"]) == 0
 
 
+async def test_list_threads_rejects_negative_limit(api):
+    resp = await api.get("/api/threads?limit=-1")
+    assert resp.status_code == 422
+
+
+async def test_list_threads_rejects_zero_limit(api):
+    resp = await api.get("/api/threads?limit=0")
+    assert resp.status_code == 422
+
+
+async def test_list_threads_rejects_too_large_limit(api):
+    resp = await api.get("/api/threads?limit=501")
+    assert resp.status_code == 422
+
+
+async def test_list_threads_rejects_negative_offset(api):
+    resp = await api.get("/api/threads?offset=-1")
+    assert resp.status_code == 422
+
+
+async def test_list_threads_pagination(api, cfg, now):
+    from app.db import connect
+    conn = connect(cfg.db_path)
+    repo.add_thread(conn, "g", 1, "manual", now)
+    repo.add_thread(conn, "b", 2, "manual", now)
+    conn.close()
+
+    first = (await api.get("/api/threads?limit=1")).json()["threads"]
+    assert len(first) == 1
+    second = (await api.get("/api/threads?limit=1&offset=1")).json()["threads"]
+    assert len(second) == 1
+    assert first[0]["id"] != second[0]["id"]
+
+
 async def test_delete_thread_removes_files_too(api, cfg, now):
     await api.post("/api/threads", json={"url": "g/12345678"})
     tid = (await api.get("/api/threads")).json()["threads"][0]["id"]
