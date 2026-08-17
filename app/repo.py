@@ -214,3 +214,9 @@ def stats(conn) -> dict:
         "last_polled": last,
         "recent_errors": [dict(e) for e in errors],
     }
+
+
+def media_for_thread(conn, thread_id) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT tim, ext, kind, status, bytes FROM media WHERE thread_id = ?"
+        " ORDER BY tim, kind", (thread_id,)).fetchall()
