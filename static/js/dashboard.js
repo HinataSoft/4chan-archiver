@@ -3,6 +3,25 @@ import { del, formatBytes, formatTime, getJSON, postJSON } from "./api.js";
 const tbody = document.getElementById("threads");
 const addError = document.getElementById("add-error");
 
+function showError(err) {
+  addError.textContent = err instanceof Error ? err.message : String(err);
+}
+
+function clearError() {
+  addError.textContent = "";
+}
+
+// Spouští akci a promítne selhání do sdílené chybové hlášky, aby žádná
+// mutace ani refresh() neselhaly potichu; úspěch chybu smaže.
+async function run(action) {
+  clearError();
+  try {
+    await action();
+  } catch (err) {
+    showError(err);
+  }
+}
+
 async function loadStats() {
   const s = await getJSON("/api/stats");
   document.getElementById("stats").innerHTML = "";
@@ -46,50 +65,59 @@ function renderThread(t) {
   const actions = cell(tr, "");
   const remove = document.createElement("button");
   remove.textContent = "Smazat";
-  remove.onclick = async () => {
+  remove.onclick = () => run(async () => {
     if (!confirm(`Smazat ${t.board}/${t.no} včetně médií?`)) return;
     await del(`/api/threads/${t.id}`);
     await refresh();
-  };
+  });
   actions.appendChild(remove);
   if (t.last_error) {
     const retry = document.createElement("button");
     retry.textContent = "Retry médií";
     retry.title = t.last_error;
-    retry.onclick = async () => {
+    retry.onclick = () => run(async () => {
       await postJSON(`/api/threads/${t.id}/retry`);
       await refresh();
-    };
+    });
     actions.appendChild(retry);
   }
   return tr;
 }
 
+// Monotónní token: pokud odpověď dorazí až po tom, co byl vyžádán novější
+// refresh(), zahodí se, aby pozdější dotaz nepřepsal výsledky tím dřívějším.
+let requestToken = 0;
+
 async function refresh() {
+  const token = ++requestToken;
   const params = new URLSearchParams();
   const q = document.getElementById("filter-q").value.trim();
   const status = document.getElementById("filter-status").value;
   if (q) params.set("q", q);
   if (status) params.set("status", status);
   const { threads } = await getJSON(`/api/threads?${params}`);
+  if (token !== requestToken) return;
   tbody.replaceChildren(...threads.map(renderThread));
   await loadStats();
 }
 
-document.getElementById("add-form").onsubmit = async (event) => {
+document.getElementById("add-form").onsubmit = (event) => {
   event.preventDefault();
-  addError.textContent = "";
   const input = document.getElementById("url");
-  try {
+  run(async () => {
     await postJSON("/api/threads", { url: input.value });
     input.value = "";
     await refresh();
-  } catch (err) {
-    addError.textContent = err.message;
-  }
+  });
 };
 
-document.getElementById("refresh").onclick = refresh;
-document.getElementById("filter-q").oninput = refresh;
-document.getElementById("filter-status").onchange = refresh;
-refresh();
+let filterTimer = null;
+function scheduleRefresh() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => run(refresh), 300);
+}
+
+document.getElementById("refresh").onclick = () => run(refresh);
+document.getElementById("filter-q").oninput = scheduleRefresh;
+document.getElementById("filter-status").onchange = () => run(refresh);
+run(refresh);

@@ -18,14 +18,31 @@ PIXEL = bytes.fromhex(
     "0049454e44ae426082")
 
 
+def get_or_create_thread(conn, board, no, source, now):
+    """add_thread vrací None, pokud (board, no) už existuje — najdi existující id."""
+    thread_id = repo.add_thread(conn, board, no, source, now)
+    if thread_id is None:
+        thread_id = repo.find_thread(conn, board, no)["id"]
+    return thread_id
+
+
+def get_or_create_rule(conn, board, keywords, now):
+    """add_rule vždy vloží nový řádek — dohledej existující pravidlo se stejnými
+    klíčovými slovy, aby opakované spuštění nevytvářelo duplicity."""
+    for row in repo.list_rules(conn):
+        if row["board"] == board and repo.rule_keywords(row) == keywords:
+            return row["id"]
+    return repo.add_rule(conn, board, keywords, now)
+
+
 def main() -> None:
     cfg = load_config()
     conn = connect(cfg.db_path)
     now = datetime.now(timezone.utc)
 
-    tid = repo.add_thread(conn, "g", 12345678, "manual", now)
-    rid = repo.add_rule(conn, "g", ["daily programming", "rust"], now)
-    repo.add_thread(conn, "g", 12345999, f"rule:{rid}", now)
+    tid = get_or_create_thread(conn, "g", 12345678, "manual", now)
+    rid = get_or_create_rule(conn, "g", ["daily programming", "rust"], now)
+    get_or_create_thread(conn, "g", 12345999, f"rule:{rid}", now)
 
     doc = archive.new_document("g", 12345678, now)
     doc["posts"] = [
