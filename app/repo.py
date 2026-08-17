@@ -1,5 +1,6 @@
+import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 ERROR_THRESHOLD = 10
 
@@ -94,3 +95,122 @@ def mark_failure(conn, thread_id, *, now, error, next_poll_at, poll_interval) ->
 
 def delete_thread(conn, thread_id) -> None:
     conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+
+
+MEDIA_FAIL_THRESHOLD = 3
+
+
+def add_rule(conn, board: str, keywords: list[str], now: datetime) -> int:
+    cur = conn.execute(
+        "INSERT INTO rules (board, keywords, enabled, created_at)"
+        " VALUES (?, ?, 1, ?)",
+        (board, json.dumps(keywords), iso(now)),
+    )
+    return cur.lastrowid
+
+
+def get_rule(conn, rule_id) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM rules WHERE id = ?", (rule_id,)).fetchone()
+
+
+def list_rules(conn) -> list[sqlite3.Row]:
+    return conn.execute("SELECT * FROM rules ORDER BY board, id").fetchall()
+
+
+def rule_keywords(row) -> list[str]:
+    return json.loads(row["keywords"])
+
+
+def update_rule(conn, rule_id, *, keywords=None, enabled=None) -> None:
+    sets, params = [], []
+    if keywords is not None:
+        sets.append("keywords = ?")
+        params.append(json.dumps(keywords))
+    if enabled is not None:
+        sets.append("enabled = ?")
+        params.append(1 if enabled else 0)
+    if not sets:
+        return
+    params.append(rule_id)
+    conn.execute(f"UPDATE rules SET {', '.join(sets)} WHERE id = ?", params)
+
+
+def delete_rule(conn, rule_id) -> None:
+    conn.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
+
+
+def due_rules(conn, now: datetime, scan_interval: int) -> list[sqlite3.Row]:
+    cutoff = iso(now - timedelta(seconds=scan_interval))
+    return conn.execute(
+        "SELECT * FROM rules WHERE enabled = 1"
+        " AND (last_scan_at IS NULL OR last_scan_at <= ?) ORDER BY id",
+        (cutoff,)).fetchall()
+
+
+def mark_rule_scanned(conn, rule_id, now: datetime, error: str | None = None) -> None:
+    conn.execute(
+        "UPDATE rules SET last_scan_at = ?, last_error = ? WHERE id = ?",
+        (iso(now), error[:500] if error else None, rule_id))
+
+
+def add_media(conn, thread_id, tim: int, ext: str, kind: str) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO media (thread_id, tim, ext, kind, status)"
+        " VALUES (?, ?, ?, ?, 'pending')", (thread_id, tim, ext, kind))
+
+
+def pending_media(conn, limit: int) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT m.*, t.board, t.no FROM media m JOIN threads t ON t.id = m.thread_id"
+        " WHERE m.status = 'pending' ORDER BY m.thread_id, m.tim LIMIT ?",
+        (limit,)).fetchall()
+
+
+def mark_media_ok(conn, thread_id, tim, kind, size: int) -> None:
+    conn.execute(
+        "UPDATE media SET status='ok', bytes=?, last_error=NULL"
+        " WHERE thread_id=? AND tim=? AND kind=?", (size, thread_id, tim, kind))
+
+
+def mark_media_failed(conn, thread_id, tim, kind, error: str) -> None:
+    conn.execute(
+        "UPDATE media SET fail_count = fail_count + 1, last_error = ?,"
+        " status = CASE WHEN fail_count + 1 >= ? THEN 'failed' ELSE 'pending' END"
+        " WHERE thread_id=? AND tim=? AND kind=?",
+        (error[:500], MEDIA_FAIL_THRESHOLD, thread_id, tim, kind))
+
+
+def retry_failed_media(conn, thread_id) -> int:
+    cur = conn.execute(
+        "UPDATE media SET status='pending', fail_count=0, last_error=NULL"
+        " WHERE thread_id = ? AND status = 'failed'", (thread_id,))
+    return cur.rowcount
+
+
+def recompute_thread_bytes(conn, thread_id) -> None:
+    conn.execute(
+        "UPDATE threads SET bytes = COALESCE("
+        " (SELECT SUM(bytes) FROM media WHERE thread_id = ?), 0) WHERE id = ?",
+        (thread_id, thread_id))
+
+
+def stats(conn) -> dict:
+    counts = {"live": 0, "dead": 0, "error": 0}
+    for row in conn.execute("SELECT status, COUNT(*) c FROM threads GROUP BY status"):
+        counts[row["status"]] = row["c"]
+    row = conn.execute(
+        "SELECT COALESCE(SUM(bytes), 0) b,"
+        " SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) f,"
+        " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) p FROM media").fetchone()
+    last = conn.execute("SELECT MAX(last_polled) m FROM threads").fetchone()["m"]
+    errors = conn.execute(
+        "SELECT id, board, no, last_error FROM threads"
+        " WHERE last_error IS NOT NULL ORDER BY last_polled DESC LIMIT 10").fetchall()
+    return {
+        "threads": counts,
+        "media_bytes": row["b"],
+        "media_failed": row["f"] or 0,
+        "media_pending": row["p"] or 0,
+        "last_polled": last,
+        "recent_errors": [dict(e) for e in errors],
+    }
