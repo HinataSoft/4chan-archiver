@@ -53,7 +53,7 @@ def _clean_keywords(raw: list[str]) -> list[str]:
     return [k.strip() for k in raw if k.strip()]
 
 
-def create_app(cfg: Config) -> FastAPI:
+def create_app(cfg: Config, now_fn=None) -> FastAPI:
     app = FastAPI(title="4chan archiver")
     app.state.cfg = cfg
 
@@ -64,8 +64,11 @@ def create_app(cfg: Config) -> FastAPI:
         finally:
             conn.close()
 
+    if now_fn is None:
+        now_fn = lambda: datetime.now(timezone.utc)
+
     def now() -> datetime:
-        return datetime.now(timezone.utc)
+        return now_fn()
 
     @app.post("/api/threads", status_code=201)
     def add_thread(payload: ThreadIn, conn=Depends(get_conn)):
