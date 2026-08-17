@@ -96,13 +96,22 @@ def test_delete_thread_dir_propagates_real_errors(cfg, now, monkeypatch):
     import shutil
     archive.save_thread(cfg.archive_dir, archive.new_document("g", 123, now))
 
-    def raise_permission_error(*args, **kwargs):
+    calls = []
+
+    def fake_rmtree(path, ignore_errors=False):
+        calls.append({"path": path, "ignore_errors": ignore_errors})
+        if ignore_errors:
+            return
         raise PermissionError("File locked by antivirus")
 
-    monkeypatch.setattr(shutil, "rmtree", raise_permission_error)
+    monkeypatch.setattr(shutil, "rmtree", fake_rmtree)
 
     try:
         archive.delete_thread_dir(cfg.archive_dir, "g", 123)
         assert False, "Expected PermissionError to propagate"
     except PermissionError:
         pass
+
+    assert len(calls) == 1, f"Expected rmtree to be called once, got {len(calls)} calls"
+    assert calls[0]["ignore_errors"] is False, \
+        f"Expected rmtree called with ignore_errors=False, got {calls[0]}"
