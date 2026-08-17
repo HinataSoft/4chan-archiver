@@ -66,3 +66,23 @@ async def test_scan_due_skips_disabled_and_updates_timestamp(conn, client, cfg, 
     assert await scanner.scan_due(conn, client, cfg, now) == 1
     assert repo.find_thread(conn, "b", 2) is None
     assert await scanner.scan_due(conn, client, cfg, now + timedelta(seconds=10)) == 0
+
+
+async def test_nonexistent_board_returns_404(conn, client, cfg, fake, now):
+    rid = repo.add_rule(conn, "z", ["test"], now)
+    result = await scanner.scan_rule(conn, client, repo.get_rule(conn, rid), now)
+    assert result == 0
+    rule = repo.get_rule(conn, rid)
+    assert rule["last_scan_at"] is not None
+    assert "404" in rule["last_error"]
+
+
+async def test_skips_malformed_entries(conn, client, cfg, fake, now):
+    fake.set_catalog("g", [
+        {"no": 1, "sub": "rust general", "com": ""},
+        {"sub": "rust malformed - no 'no' key", "com": ""},
+    ])
+    rule = repo.get_rule(conn, repo.add_rule(conn, "g", ["rust"], now))
+    result = await scanner.scan_rule(conn, client, rule, now)
+    assert result == 1
+    assert repo.find_thread(conn, "g", 1) is not None
