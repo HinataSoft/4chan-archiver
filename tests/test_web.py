@@ -115,3 +115,72 @@ async def test_retry_requeues_failed_media(api, cfg, now):
     resp = await api.post(f"/api/threads/{tid}/retry")
     assert resp.status_code == 200
     assert resp.json() == {"requeued": 1}
+
+
+async def test_create_and_list_rule(api):
+    resp = await api.post("/api/rules",
+                          json={"board": "g", "keywords": ["rust", "zig"]})
+    assert resp.status_code == 201
+    assert resp.json()["keywords"] == ["rust", "zig"]
+    assert resp.json()["enabled"] is True
+
+    listed = (await api.get("/api/rules")).json()["rules"]
+    assert len(listed) == 1
+    assert listed[0]["board"] == "g"
+
+
+async def test_rule_requires_at_least_one_keyword(api):
+    resp = await api.post("/api/rules", json={"board": "g", "keywords": []})
+    assert resp.status_code == 400
+
+
+async def test_rule_rejects_bad_board_name(api):
+    resp = await api.post("/api/rules", json={"board": "../etc", "keywords": ["x"]})
+    assert resp.status_code == 400
+
+
+async def test_patch_rule(api):
+    rid = (await api.post("/api/rules",
+                          json={"board": "g", "keywords": ["rust"]})).json()["id"]
+    resp = await api.patch(f"/api/rules/{rid}",
+                           json={"keywords": ["zig"], "enabled": False})
+    assert resp.status_code == 200
+    assert resp.json()["keywords"] == ["zig"]
+    assert resp.json()["enabled"] is False
+
+
+async def test_delete_rule_keeps_downloaded_threads(api, cfg, now):
+    from app.db import connect
+    rid = (await api.post("/api/rules",
+                          json={"board": "g", "keywords": ["rust"]})).json()["id"]
+    conn = connect(cfg.db_path)
+    repo.add_thread(conn, "g", 1, f"rule:{rid}", now)
+    conn.close()
+
+    assert (await api.delete(f"/api/rules/{rid}")).status_code == 204
+    assert (await api.get("/api/rules")).json()["rules"] == []
+    assert len((await api.get("/api/threads")).json()["threads"]) == 1
+
+
+async def test_delete_unknown_rule_is_404(api):
+    assert (await api.delete("/api/rules/999")).status_code == 404
+
+
+async def test_stats_shape(api, cfg, now):
+    from app.db import connect
+    await api.post("/api/threads", json={"url": "g/1"})
+    conn = connect(cfg.db_path)
+    tid = repo.find_thread(conn, "g", 1)["id"]
+    repo.add_media(conn, tid, 111, ".jpg", "file")
+    repo.mark_media_ok(conn, tid, 111, "file", 1234)
+    conn.close()
+
+    body = (await api.get("/api/stats")).json()
+    assert body["threads"] == {"live": 1, "dead": 0, "error": 0}
+    assert body["media_bytes"] == 1234
+    assert body["media_pending"] == 0
+    assert body["recent_errors"] == []
+
+
+async def test_static_serving_is_off_by_default(api):
+    assert (await api.get("/archive/g/1/thread.json")).status_code == 404
