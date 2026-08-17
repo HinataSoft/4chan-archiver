@@ -125,6 +125,16 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
   return el;
 }
 
+// Zobrazí se místo postu, který se nepodařilo vykreslit (viz try/catch v main),
+// aby chyba u jednoho postu neshodila celý thread.
+function renderFailedPost(post) {
+  const el = document.createElement("div");
+  el.className = "post render-failed";
+  if (post && post.no != null) el.id = `p${post.no}`;
+  el.textContent = `[post ${post && post.no != null ? post.no : "?"} se nepodařilo zobrazit]`;
+  return el;
+}
+
 function flash(target) {
   target.classList.add("flash");
   setTimeout(() => target.classList.remove("flash"), 1200);
@@ -190,8 +200,15 @@ async function main() {
     `${subject} (/${board}/${no}, ${posts.length} postů${doc.status === "dead" ? ", smazán" : ""})`;
 
   const mediaState = doc.media || {};
-  postsEl.replaceChildren(
-    ...posts.map((p, i) => renderPost(p, i, knownPosts, backlinks, mediaState)));
+  const rendered = posts.map((p, i) => {
+    try {
+      return renderPost(p, i, knownPosts, backlinks, mediaState);
+    } catch (err) {
+      console.error(`post č. ${p.no} se nepodařilo vykreslit`, err);
+      return renderFailedPost(p);
+    }
+  });
+  postsEl.replaceChildren(...rendered);
   wireQuoteLinks();
 
   if (location.hash) {
