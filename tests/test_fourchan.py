@@ -72,3 +72,17 @@ async def test_download_raises_on_missing_file(client, tmp_path):
         await client.download("https://i.4cdn.org/g/nope.jpg", tmp_path / "nope.jpg")
     assert not (tmp_path / "nope.jpg").exists()
     assert not (tmp_path / "nope.jpg.part").exists()
+
+
+async def test_fake_tracks_last_modified_per_thread(client, fake):
+    fake.set_thread("g", 1, [{"no": 1}])
+    fake.set_thread("g", 2, [{"no": 2}])
+    resp1 = await client.fetch_thread("g", 1, None)
+    resp2 = await client.fetch_thread("g", 2, None)
+
+    fake.set_thread("g", 1, [{"no": 1}, {"no": 3, "com": "new"}])
+
+    changed = await client.fetch_thread("g", 1, resp1.last_modified)
+    unchanged = await client.fetch_thread("g", 2, resp2.last_modified)
+    assert changed.status == 200
+    assert unchanged.status == 304
