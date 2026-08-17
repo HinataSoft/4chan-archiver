@@ -39,8 +39,9 @@ def list_threads(conn, *, status=None, board=None, q=None,
         where.append("board = ?")
         params.append(board)
     if q:
-        where.append("LOWER(COALESCE(subject, '')) LIKE ?")
-        params.append(f"%{q.lower()}%")
+        escaped_q = q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where.append("LOWER(COALESCE(subject, '')) LIKE ? ESCAPE '\\'")
+        params.append(f"%{escaped_q}%")
     params.extend([limit, offset])
     return conn.execute(
         f"SELECT * FROM threads WHERE {' AND '.join(where)}"

@@ -91,3 +91,27 @@ def test_delete_thread(conn, now):
     tid = repo.add_thread(conn, "g", 123, "manual", now)
     repo.delete_thread(conn, tid)
     assert repo.get_thread(conn, tid) is None
+
+
+def test_list_threads_escapes_like_percent_metacharacter(conn, now):
+    with_percent = repo.add_thread(conn, "g", 1, "manual", now)
+    without_percent = repo.add_thread(conn, "g", 2, "manual", now)
+    repo.mark_polled(conn, with_percent, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject="Sales 50%")
+    repo.mark_polled(conn, without_percent, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject="Sales 500")
+    results = repo.list_threads(conn, q="50%")
+    assert len(results) == 1
+    assert results[0]["id"] == with_percent
+
+
+def test_list_threads_escapes_like_underscore_metacharacter(conn, now):
+    with_underscore = repo.add_thread(conn, "g", 1, "manual", now)
+    without_underscore = repo.add_thread(conn, "g", 2, "manual", now)
+    repo.mark_polled(conn, with_underscore, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject="foo_bar")
+    repo.mark_polled(conn, without_underscore, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject="fooXbar")
+    results = repo.list_threads(conn, q="foo_bar")
+    assert len(results) == 1
+    assert results[0]["id"] == with_underscore
