@@ -77,4 +77,7 @@ def media_entries(posts: list[dict]) -> list[tuple[int, str]]:
 
 
 def delete_thread_dir(archive_dir: Path, board: str, no: int) -> None:
-    shutil.rmtree(thread_dir(archive_dir, board, no), ignore_errors=True)
+    try:
+        shutil.rmtree(thread_dir(archive_dir, board, no))
+    except FileNotFoundError:
+        pass

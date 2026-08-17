@@ -90,3 +90,19 @@ def test_delete_thread_dir_removes_everything(cfg, now):
 
 def test_delete_missing_dir_is_noop(cfg):
     archive.delete_thread_dir(cfg.archive_dir, "g", 404)
+
+
+def test_delete_thread_dir_propagates_real_errors(cfg, now, monkeypatch):
+    import shutil
+    archive.save_thread(cfg.archive_dir, archive.new_document("g", 123, now))
+
+    def raise_permission_error(*args, **kwargs):
+        raise PermissionError("File locked by antivirus")
+
+    monkeypatch.setattr(shutil, "rmtree", raise_permission_error)
+
+    try:
+        archive.delete_thread_dir(cfg.archive_dir, "g", 123)
+        assert False, "Expected PermissionError to propagate"
+    except PermissionError:
+        pass
