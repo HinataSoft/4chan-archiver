@@ -69,6 +69,31 @@ async def test_already_downloaded_file_is_not_fetched_again(conn, client, cfg, f
     assert len(fake.requests) == before
 
 
+async def test_existing_file_on_disk_is_recorded_not_redownloaded(conn, client, cfg, fake, now):
+    fake.set_thread("g", 123, [{"no": 123, "tim": 111, "ext": ".webm"}])
+    fake.set_file("g", "111.webm", b"cdn-bytes-should-not-be-fetched")
+    fake.set_file("g", "111s.jpg", b"thumb-bytes")
+    tid = repo.add_thread(conn, "g", 123, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+
+    dest = archive.media_path(cfg.archive_dir, "g", 123, 111, ".webm", "file")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"already-on-disk")
+
+    file_requests_before = [r for r in fake.requests if r.url.path == "/g/111.webm"]
+    result = await media.download_pending(conn, client, cfg)
+    file_requests_after = [r for r in fake.requests if r.url.path == "/g/111.webm"]
+
+    assert len(file_requests_after) == len(file_requests_before)
+    assert result == {"ok": 2, "failed": 0}
+
+    row = conn.execute(
+        "SELECT * FROM media WHERE tim=111 AND kind='file'").fetchone()
+    assert row["status"] == "ok"
+    assert row["bytes"] == len(b"already-on-disk")
+    assert dest.read_bytes() == b"already-on-disk"
+
+
 async def test_retry_reschedules_failed_media(conn, client, cfg, fake, now):
     fake.set_thread("g", 123, [{"no": 123, "tim": 111, "ext": ".jpg"}])
     tid = repo.add_thread(conn, "g", 123, "manual", now)
