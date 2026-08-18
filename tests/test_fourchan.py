@@ -86,3 +86,63 @@ async def test_fake_tracks_last_modified_per_thread(client, fake):
     unchanged = await client.fetch_thread("g", 2, resp2.last_modified)
     assert changed.status == 200
     assert unchanged.status == 304
+
+
+def _fake_clock():
+    """Falešné hodiny, které se posouvají jen tím, že limiter uspí."""
+    clock = [0.0]
+
+    async def sleeper(seconds):
+        clock[0] += seconds
+
+    return clock, sleeper
+
+
+def _client(fake, clock, sleeper, *, api_rate, media_rate):
+    http = httpx.AsyncClient(transport=fake.transport())
+    return FourchanClient(http, api_rate=api_rate, media_rate=media_rate,
+                          clock=lambda: clock[0], sleep=sleeper)
+
+
+async def test_api_rate_of_one_paces_thread_fetches(fake):
+    """I5: 1 req/s na a.4cdn.org vyžadují pravidla API. Bez tohoto testu by
+    refactor, který acquire() z _get_json vypustí, prošel celou sadou."""
+    clock, sleeper = _fake_clock()
+    client = _client(fake, clock, sleeper, api_rate=1, media_rate=1000)
+    fake.set_thread("g", 123, [{"no": 123}])
+
+    for _ in range(3):
+        await client.fetch_thread("g", 123, None)
+    assert clock[0] >= 2.0
+    assert len(fake.requests) == 3
+
+
+async def test_api_rate_of_one_paces_catalog_fetches_too(fake):
+    clock, sleeper = _fake_clock()
+    client = _client(fake, clock, sleeper, api_rate=1, media_rate=1000)
+    fake.set_catalog("g", [{"no": 1}])
+
+    for _ in range(3):
+        await client.fetch_catalog("g")
+    assert clock[0] >= 2.0
+
+
+async def test_media_downloads_use_their_own_limiter(fake, tmp_path):
+    """I5: média nesmí viset na API limiteru — a API nesmí jet rychlostí médií."""
+    clock, sleeper = _fake_clock()
+    client = _client(fake, clock, sleeper, api_rate=1000, media_rate=1)
+    fake.set_file("g", "111.jpg", b"x")
+
+    for i in range(3):
+        await client.download("https://i.4cdn.org/g/111.jpg", tmp_path / f"{i}.jpg")
+    assert clock[0] >= 2.0
+
+
+async def test_media_traffic_is_not_slowed_down_by_the_api_limiter(fake, tmp_path):
+    clock, sleeper = _fake_clock()
+    client = _client(fake, clock, sleeper, api_rate=1, media_rate=1000)
+    fake.set_file("g", "111.jpg", b"x")
+
+    for i in range(3):
+        await client.download("https://i.4cdn.org/g/111.jpg", tmp_path / f"{i}.jpg")
+    assert clock[0] < 0.1

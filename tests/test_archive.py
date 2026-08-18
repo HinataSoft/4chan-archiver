@@ -115,3 +115,24 @@ def test_delete_thread_dir_propagates_real_errors(cfg, now, monkeypatch):
     assert len(calls) == 1, f"Expected rmtree to be called once, got {len(calls)} calls"
     assert calls[0]["ignore_errors"] is False, \
         f"Expected rmtree called with ignore_errors=False, got {calls[0]}"
+
+
+def test_media_entries_accepts_normal_extensions():
+    posts = [{"no": 1, "tim": 111, "ext": ".webm"}, {"no": 2, "tim": 222, "ext": ".jpg"}]
+    assert archive.media_entries(posts) == [(111, ".webm"), (222, ".jpg")]
+
+
+def test_media_entries_rejects_path_traversal_in_ext():
+    """I1: `ext` jde přímo do jména souboru na disku. Nepřátelský ext by zapsal
+    mimo archiv — spec staví bezpečnost médií právě na tom, že cesta je
+    odvozená z čísel, což platí jen když je i ext validovaný."""
+    hostile = [
+        {"no": 1, "tim": 111, "ext": "/../../../../../pwned.txt"},
+        {"no": 2, "tim": 222, "ext": "../evil.sh"},
+        {"no": 3, "tim": 333, "ext": ".jpg/../../x"},
+        {"no": 4, "tim": 444, "ext": "jpg"},
+        {"no": 5, "tim": 555, "ext": ".JPG" + chr(92) + ".." + chr(92) + "x"},
+        {"no": 6, "tim": 666, "ext": 123},
+        {"no": 7, "tim": 777, "ext": ".toolongext"},
+    ]
+    assert archive.media_entries(hostile) == []

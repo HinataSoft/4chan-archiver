@@ -105,3 +105,23 @@ async def test_retry_reschedules_failed_media(conn, client, cfg, fake, now):
     fake.set_file("g", "111s.jpg", b"thumb")
     assert repo.retry_failed_media(conn, tid) == 2
     assert await media.download_pending(conn, client, cfg) == {"ok": 2, "failed": 0}
+
+
+async def test_hostile_ext_never_writes_outside_the_archive(conn, client, cfg, fake, now,
+                                                            tmp_path):
+    """I1: end-to-end — nepřátelská odpověď z a.4cdn.org se nesmí propsat
+    do cesty na disku."""
+    fake.set_thread("g", 123, [{"no": 123, "tim": 111, "ext": "/../../../../../pwned.txt"}])
+    fake.set_file("g", "111/../../../../../pwned.txt", b"owned")
+    fake.set_file("g", "111s.jpg", b"thumb-bytes")
+    tid = repo.add_thread(conn, "g", 123, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+
+    assert repo.pending_media(conn, 10) == []
+    assert await media.download_pending(conn, client, cfg) == {"ok": 0, "failed": 0}
+
+    outside = [p for p in tmp_path.rglob("*")
+               if p.is_file() and cfg.archive_dir not in p.parents
+               and p.parent != cfg.data_dir]
+    assert outside == []
+    assert not (tmp_path.parent / "pwned.txt").exists()

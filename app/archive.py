@@ -1,8 +1,17 @@
 import json
+import logging
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# `tim` je int a `ext` jde do jména souboru na disku i do URL, kterou
+# nginx servíruje bez jakékoli sanitizace. Jediná obrana je tenhle
+# whitelist na hranici: cokoli mimo tvar ".webm" se zahodí.
+EXT_RE = re.compile(r"\.[a-z0-9]{1,5}")
 
 
 def thread_dir(archive_dir: Path, board: str, no: int) -> Path:
@@ -68,11 +77,21 @@ def merge_posts(old: list[dict], new: list[dict]) -> list[dict]:
     return [merged[n] for n in sorted(merged)]
 
 
+def valid_ext(ext) -> bool:
+    return isinstance(ext, str) and EXT_RE.fullmatch(ext) is not None
+
+
 def media_entries(posts: list[dict]) -> list[tuple[int, str]]:
     out = []
     for post in posts:
-        if post.get("tim") and post.get("ext") and not post.get("filedeleted"):
-            out.append((int(post["tim"]), post["ext"]))
+        if not post.get("tim") or not post.get("ext") or post.get("filedeleted"):
+            continue
+        ext = post["ext"]
+        if not valid_ext(ext):
+            log.warning("post %s: podezřelé ext %r, médium přeskočeno",
+                        post.get("no"), ext)
+            continue
+        out.append((int(post["tim"]), ext))
     return out
 
 

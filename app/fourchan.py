@@ -39,10 +39,14 @@ class JsonResponse:
 
 class FourchanClient:
     def __init__(self, client: httpx.AsyncClient, *,
-                 api_rate: float = 1.0, media_rate: float = 4.0):
+                 api_rate: float = 1.0, media_rate: float = 4.0,
+                 clock=time.monotonic, sleep=asyncio.sleep):
         self._http = client
-        self._api = RateLimiter(api_rate)
-        self._media = RateLimiter(media_rate)
+        # Dva oddělené limitery: a.4cdn.org má tvrdý 1 req/s podle pravidel API,
+        # i.4cdn.org svůj volnější. Sdílený limiter by buď porušil pravidla, nebo
+        # zbytečně brzdil média. clock/sleep jsou tu kvůli testovatelnosti.
+        self._api = RateLimiter(api_rate, clock=clock, sleep=sleep)
+        self._media = RateLimiter(media_rate, clock=clock, sleep=sleep)
 
     async def aclose(self) -> None:
         await self._http.aclose()
