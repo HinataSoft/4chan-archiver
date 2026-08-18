@@ -126,3 +126,38 @@ async def test_poll_due_processes_all_due_threads(conn, client, cfg, fake, now):
     assert await poller.poll_due(conn, client, cfg, now) == {
         "updated": 3, "unchanged": 0, "dead": 0, "error": 0}
     assert repo.due_threads(conn, now, 10) == []
+
+
+async def test_disk_failure_does_not_stall_the_poll_queue(conn, client, cfg, fake, now,
+                                                          monkeypatch):
+    """C2: plný disk u jednoho threadu nesmí shodit dávku ani zablokovat frontu.
+    next_poll_at se musí posunout, jinak thread trvale sedí v čele due fronty."""
+    fake.set_thread("g", 111, [{"no": 111, "com": "poisoned"}])
+    fake.set_thread("g", 222, [{"no": 222, "com": "healthy"}])
+    bad = repo.add_thread(conn, "g", 111, "manual", now)
+    good = repo.add_thread(conn, "g", 222, "manual", now)
+
+    real_save = archive.save_thread
+
+    def flaky_save(archive_dir, doc):
+        if doc["no"] == 111:
+            raise OSError(28, "No space left on device")
+        real_save(archive_dir, doc)
+
+    monkeypatch.setattr(archive, "save_thread", flaky_save)
+
+    counts = await poller.poll_due(conn, client, cfg, now)
+    assert counts == {"updated": 1, "unchanged": 0, "dead": 0, "error": 1}
+
+    bad_row = repo.get_thread(conn, bad)
+    assert bad_row["fail_count"] == 1
+    assert bad_row["next_poll_at"] > repo.iso(now)
+    assert "No space left on device" in bad_row["last_error"]
+
+    good_row = repo.get_thread(conn, good)
+    assert good_row["post_count"] == 1
+    assert good_row["last_error"] is None
+    assert archive.load_thread(cfg.archive_dir, "g", 222)["posts"][0]["no"] == 222
+
+    # Otrávený thread už nesmí blokovat frontu v témže okamžiku.
+    assert [r["id"] for r in repo.due_threads(conn, now, 10)] == []

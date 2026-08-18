@@ -60,7 +60,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
 def connect(db_path: Path) -> sqlite3.Connection:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=5.0, isolation_level=None)
+    # check_same_thread=False: FastAPI dispatchuje sync dependency a sync handler
+    # přes samostatné threadpool hopy bez thread affinity, takže spojení vzniklé
+    # v get_conn se běžně používá a zavírá na jiném vlákně. Každý request má
+    # vlastní spojení a v jednu chvíli se ho dotýká jen jedno vlákno.
+    conn = sqlite3.connect(db_path, timeout=5.0, isolation_level=None,
+                           check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")

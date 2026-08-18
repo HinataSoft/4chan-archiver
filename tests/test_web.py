@@ -184,3 +184,20 @@ async def test_stats_shape(api, cfg, now):
 
 async def test_static_serving_is_off_by_default(api):
     assert (await api.get("/archive/g/1/thread.json")).status_code == 404
+
+
+async def test_concurrent_requests_all_succeed(api, cfg, now):
+    """C1: FastAPI dispatches the sync dependency and the sync endpoint body
+    through separate threadpool hops, so a connection without
+    check_same_thread=False blows up under concurrency."""
+    import asyncio
+
+    from app.db import connect
+    conn = connect(cfg.db_path)
+    repo.add_thread(conn, "g", 1, "manual", now)
+    conn.close()
+
+    responses = await asyncio.gather(
+        *(api.get("/api/threads") for _ in range(16)), return_exceptions=True)
+    statuses = [r if isinstance(r, BaseException) else r.status_code for r in responses]
+    assert statuses == [200] * 16

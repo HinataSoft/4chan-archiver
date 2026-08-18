@@ -20,16 +20,9 @@ def _subject(posts: list[dict]) -> str | None:
     return html_to_text(posts[0].get("sub")) or None
 
 
-async def poll_thread(conn, client, cfg: Config, row, now: datetime) -> str:
+async def _poll_once(conn, client, cfg: Config, row, now: datetime) -> str:
     board, no = row["board"], row["no"]
-    try:
-        resp = await client.fetch_thread(board, no, row["last_modified"])
-    except Exception as exc:  # síť, timeout, rozbité JSON
-        log.warning("poll %s/%s selhal: %s", board, no, exc)
-        repo.mark_failure(conn, row["id"], now=now, error=f"{type(exc).__name__}: {exc}",
-                          next_poll_at=now + timedelta(seconds=cfg.poll_max_interval),
-                          poll_interval=cfg.poll_max_interval)
-        return "error"
+    resp = await client.fetch_thread(board, no, row["last_modified"])
 
     if resp.status == 404:
         doc = archive.load_thread(cfg.archive_dir, board, no)
@@ -65,9 +58,33 @@ async def poll_thread(conn, client, cfg: Config, row, now: datetime) -> str:
     return "updated"
 
 
+async def poll_thread(conn, client, cfg: Config, row, now: datetime) -> str:
+    """Jeden poll threadu. Jakékoli selhání — síť, rozbité JSON, plný disk,
+    zamčená SQLite — jde přes mark_failure, protože ta jediná cesta posune
+    next_poll_at. Bez posunu by otrávený thread trvale seděl v čele due fronty
+    (řadí se právě podle next_poll_at) a zablokoval pollování všech ostatních."""
+    board, no = row["board"], row["no"]
+    try:
+        return await _poll_once(conn, client, cfg, row, now)
+    except Exception as exc:  # síť, timeout, rozbité JSON, I/O, DB
+        log.warning("poll %s/%s selhal: %s", board, no, exc)
+        repo.mark_failure(conn, row["id"], now=now,
+                          error=f"{type(exc).__name__}: {exc}",
+                          next_poll_at=now + timedelta(seconds=cfg.poll_max_interval),
+                          poll_interval=cfg.poll_max_interval)
+        return "error"
+
+
 async def poll_due(conn, client, cfg: Config, now: datetime,
                    limit: int = 50) -> dict[str, int]:
     counts = {"updated": 0, "unchanged": 0, "dead": 0, "error": 0}
     for row in repo.due_threads(conn, now, limit):
-        counts[await poll_thread(conn, client, cfg, row, now)] += 1
+        try:
+            counts[await poll_thread(conn, client, cfg, row, now)] += 1
+        except Exception as exc:
+            # Sem se dostane jen selhání samotného mark_failure; jeden rozbitý
+            # řádek nesmí zabít celou dávku (stejně jako scanner.scan_due).
+            log.error("unexpected error polling %s/%s: %s",
+                      row["board"], row["no"], exc)
+            counts["error"] += 1
     return counts
