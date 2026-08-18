@@ -175,7 +175,7 @@ async function main() {
   }
   let doc;
   try {
-    const resp = await fetch(`/archive/${board}/${no}/thread.json`);
+    const resp = await fetch(`/archive/${board}/${no}/thread.json`, { cache: "no-cache" });
     if (!resp.ok) throw new Error(`thread není v archivu (HTTP ${resp.status})`);
     doc = await resp.json();
   } catch (err) {
