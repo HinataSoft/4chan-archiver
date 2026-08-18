@@ -1,0 +1,127 @@
+import { del, formatBytes, formatTime, getJSON, postJSON } from "./api.js";
+
+const tbody = document.getElementById("threads");
+const addError = document.getElementById("add-error");
+
+function showError(err) {
+  addError.textContent = err instanceof Error ? err.message : String(err);
+}
+
+function clearError() {
+  addError.textContent = "";
+}
+
+// Spouští akci a promítne selhání do sdílené chybové hlášky, aby žádná
+// mutace ani refresh() neselhaly potichu; úspěch chybu smaže.
+async function run(action) {
+  clearError();
+  try {
+    await action();
+  } catch (err) {
+    showError(err);
+  }
+}
+
+async function loadStats() {
+  const s = await getJSON("/api/stats");
+  document.getElementById("stats").innerHTML = "";
+  const items = [
+    `live: <b>${s.threads.live}</b>`,
+    `dead: <b>${s.threads.dead}</b>`,
+    `error: <b>${s.threads.error}</b>`,
+    `média: <b>${formatBytes(s.media_bytes)}</b>`,
+    `ke stažení: <b>${s.media_pending}</b>`,
+    `selhalo: <b>${s.media_failed}</b>`,
+    `poslední poll: <b>${formatTime(s.last_polled)}</b>`,
+  ];
+  for (const html of items) {
+    const span = document.createElement("span");
+    span.innerHTML = html;
+    document.getElementById("stats").appendChild(span);
+  }
+}
+
+function cell(row, text) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  row.appendChild(td);
+  return td;
+}
+
+function renderThread(t) {
+  const tr = document.createElement("tr");
+  cell(tr, t.board);
+  const link = document.createElement("a");
+  link.href = `/thread.html?b=${encodeURIComponent(t.board)}&no=${t.no}`;
+  link.textContent = t.no;
+  cell(tr, "").appendChild(link);
+  cell(tr, t.subject || "—");
+  cell(tr, t.status).className = `status-${t.status}`;
+  cell(tr, t.post_count);
+  cell(tr, formatBytes(t.bytes));
+  cell(tr, formatTime(t.last_polled));
+  cell(tr, t.source);
+
+  const actions = cell(tr, "");
+  const remove = document.createElement("button");
+  remove.textContent = "Smazat";
+  remove.onclick = () => run(async () => {
+    if (!confirm(`Smazat ${t.board}/${t.no} včetně médií?`)) return;
+    await del(`/api/threads/${t.id}`);
+    await refresh();
+  });
+  actions.appendChild(remove);
+  // Selhání médií se nikdy nepropíše do threads.last_error, takže gate jen na
+  // last_error nechal zdravý live thread s 404 obrázkem navždy bez retry.
+  if (t.media_failed > 0 || t.last_error) {
+    const retry = document.createElement("button");
+    retry.textContent = "Retry médií";
+    retry.title = t.media_failed > 0
+      ? `${t.media_failed} médií selhalo`
+      : t.last_error;
+    retry.onclick = () => run(async () => {
+      await postJSON(`/api/threads/${t.id}/retry`);
+      await refresh();
+    });
+    actions.appendChild(retry);
+  }
+  return tr;
+}
+
+// Monotónní token: pokud odpověď dorazí až po tom, co byl vyžádán novější
+// refresh(), zahodí se, aby pozdější dotaz nepřepsal výsledky tím dřívějším.
+let requestToken = 0;
+
+async function refresh() {
+  const token = ++requestToken;
+  const params = new URLSearchParams();
+  const q = document.getElementById("filter-q").value.trim();
+  const status = document.getElementById("filter-status").value;
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  const { threads } = await getJSON(`/api/threads?${params}`);
+  if (token !== requestToken) return;
+  tbody.replaceChildren(...threads.map(renderThread));
+  await loadStats();
+}
+
+document.getElementById("add-form").onsubmit = (event) => {
+  event.preventDefault();
+  const input = document.getElementById("url");
+  run(async () => {
+    await postJSON("/api/threads", { url: input.value });
+    input.value = "";
+    await refresh();
+  });
+};
+
+let filterTimer = null;
+function scheduleRefresh() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => run(refresh), 300);
+}
+
+document.getElementById("refresh").onclick = () => run(refresh);
+document.getElementById("filter-q").oninput = scheduleRefresh;
+document.getElementById("filter-status").onchange = () => run(refresh);
+run(refresh);

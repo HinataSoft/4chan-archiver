@@ -1,5 +1,8 @@
 data/
+data-dev/
 __pycache__/
 *.pyc
 .venv/
 .env
+*.egg-info/
+nginx/htpasswd

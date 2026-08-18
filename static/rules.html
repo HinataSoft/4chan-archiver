@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <title>Pravidla — 4chan archiv</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <h1>Pravidla automatického stahování</h1>
+  <nav><a href="/">Thready</a><a href="/rules.html">Pravidla</a></nav>
+
+  <div class="panel">
+    <form class="row" id="add-form">
+      <input type="text" id="board" placeholder="board (např. g)" size="8" required>
+      <input type="text" id="keywords"
+             placeholder="klíčová slova oddělená čárkou" required>
+      <button type="submit">Přidat pravidlo</button>
+    </form>
+    <div class="error" id="add-error"></div>
+    <p>Thread se zařadí, když se některé klíčové slovo objeví v názvu nebo
+       v textu prvního postu (nezáleží na velikosti písmen).</p>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>Board</th><th>Klíčová slova</th><th>Aktivní</th>
+      <th>Poslední sken</th><th>Chyba</th><th></th>
+    </tr></thead>
+    <tbody id="rules"></tbody>
+  </table>
+
+  <script type="module" src="/js/rules.js"></script>
+</body>
+</html>
