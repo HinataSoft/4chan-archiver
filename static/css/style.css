@@ -77,6 +77,8 @@ th { background: var(--panel); }
                flex: 0 0 38%; color: var(--muted); }
   td:not([data-label]) { justify-content: flex-start; gap: 8px; }
   td input[type=text] { flex: 1 1 auto; min-width: 0; }
+  /* Na kartě má pole celou šířku a Save se zalomí pod něj. */
+  .kw-input { flex: 1 1 100%; }
 
   /* Post zabere šířku displeje místo šířky svého obsahu. */
   .post { display: block; }
@@ -89,3 +91,13 @@ th { background: var(--panel); }
 @media (hover: none) {
   #preview { display: none; }
 }
+
+/* Editace klíčových slov: pole + Save, které svítí jen při neuložené změně. */
+.kw-editor { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.kw-input { flex: 1 1 200px; min-width: 0; }
+.kw-editor.dirty .kw-input { border-color: #b8860b; background: #fffbe6; }
+.kw-save:disabled { opacity: .45; cursor: default; }
+.kw-editor.dirty .kw-save { font-weight: bold; }
+.kw-status { font-size: 11px; color: var(--name); opacity: 0; transition: opacity .2s; }
+.kw-status.show { opacity: 1; }
+input[type=text]:focus, select:focus { outline: 2px solid var(--link); outline-offset: -1px; }

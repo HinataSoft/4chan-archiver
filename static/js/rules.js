@@ -32,24 +32,76 @@ function cell(row, text, label) {
   return td;
 }
 
+const parseKeywords = (value) =>
+  value.split(",").map((k) => k.trim()).filter(Boolean);
+
+// Editovatelná klíčová slova s výslovným tlačítkem Save. Ukládání při
+// opuštění pole nedávalo nijak najevo, že se něco stalo — tady je tlačítko
+// aktivní jen když jsou skutečně neuložené změny, takže je na řádku vidět,
+// že něco čeká, a po uložení to potvrdí.
+function keywordEditor(rule) {
+  const box = document.createElement("div");
+  box.className = "kw-editor";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "kw-input";
+  input.value = rule.keywords.join(", ");
+  input.setAttribute("aria-label", `Keywords for /${rule.board}/`);
+
+  const save = document.createElement("button");
+  save.textContent = "Save";
+  save.className = "kw-save";
+
+  const status = document.createElement("span");
+  status.className = "kw-status";
+
+  // Porovnává rozparsované seznamy, aby "rust, zig" a "rust,zig " platily
+  // za shodné a tlačítko nesvítilo kvůli mezerám.
+  const changed = () =>
+    JSON.stringify(parseKeywords(input.value)) !== JSON.stringify(rule.keywords);
+  const sync = () => {
+    const ok = changed() && parseKeywords(input.value).length > 0;
+    save.disabled = !ok;
+    box.classList.toggle("dirty", ok);
+  };
+
+  const commit = () => run(async () => {
+    const list = parseKeywords(input.value);
+    try {
+      await patchJSON(`/api/rules/${rule.id}`, { keywords: list });
+    } catch (err) {
+      // Chyba už je vidět v hlášce nahoře; vrátíme pole na stav serveru.
+      await refresh();
+      throw err;
+    }
+    rule.keywords = list;
+    input.value = list.join(", ");
+    sync();
+    status.textContent = "saved";
+    status.classList.add("show");
+    setTimeout(() => status.classList.remove("show"), 1500);
+  });
+
+  input.oninput = sync;
+  input.onkeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (!save.disabled) commit();
+  };
+  save.onclick = commit;
+
+  sync();
+  box.append(input, save, status);
+  return box;
+}
+
 function renderRule(rule) {
   const tr = document.createElement("tr");
   cell(tr, rule.board, "Board");
 
   const keywords = cell(tr, "", "Keywords");
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = rule.keywords.join(", ");
-  input.onchange = () => run(async () => {
-    const list = input.value.split(",").map((k) => k.trim()).filter(Boolean);
-    try {
-      await patchJSON(`/api/rules/${rule.id}`, { keywords: list });
-    } finally {
-      // I po selhání znovu načíst, aby pole zobrazovalo skutečný stav na serveru.
-      await refresh();
-    }
-  });
-  keywords.appendChild(input);
+  keywords.appendChild(keywordEditor(rule));
 
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
