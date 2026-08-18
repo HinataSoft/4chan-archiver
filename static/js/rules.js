@@ -22,18 +22,21 @@ async function run(action) {
   }
 }
 
-function cell(row, text) {
+// `label` nese jméno sloupce do data-label; na úzkém displeji se tabulka
+// překlápí na karty a CSS ho vypisuje před hodnotu místo hlavičky tabulky.
+function cell(row, text, label) {
   const td = document.createElement("td");
   td.textContent = text;
+  if (label) td.dataset.label = label;
   row.appendChild(td);
   return td;
 }
 
 function renderRule(rule) {
   const tr = document.createElement("tr");
-  cell(tr, rule.board);
+  cell(tr, rule.board, "Board");
 
-  const keywords = cell(tr, "");
+  const keywords = cell(tr, "", "Keywords");
   const input = document.createElement("input");
   input.type = "text";
   input.value = rule.keywords.join(", ");
@@ -58,10 +61,10 @@ function renderRule(rule) {
       await refresh();
     }
   });
-  cell(tr, "").appendChild(toggle);
+  cell(tr, "", "Enabled").appendChild(toggle);
 
-  cell(tr, formatTime(rule.last_scan_at));
-  cell(tr, rule.last_error || "—");
+  cell(tr, formatTime(rule.last_scan_at), "Last scan");
+  cell(tr, rule.last_error || "—", "Error");
 
   const remove = document.createElement("button");
   remove.textContent = "Delete";

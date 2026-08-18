@@ -41,26 +41,29 @@ async function loadStats() {
   }
 }
 
-function cell(row, text) {
+// `label` nese jméno sloupce do data-label; na úzkém displeji se tabulka
+// překlápí na karty a CSS ho vypisuje před hodnotu místo hlavičky tabulky.
+function cell(row, text, label) {
   const td = document.createElement("td");
   td.textContent = text;
+  if (label) td.dataset.label = label;
   row.appendChild(td);
   return td;
 }
 
 function renderThread(t) {
   const tr = document.createElement("tr");
-  cell(tr, t.board);
+  cell(tr, t.board, "Board");
   const link = document.createElement("a");
   link.href = appUrl(`thread.html?b=${encodeURIComponent(t.board)}&no=${t.no}`);
   link.textContent = t.no;
-  cell(tr, "").appendChild(link);
-  cell(tr, t.subject || "—");
-  cell(tr, t.status).className = `status-${t.status}`;
-  cell(tr, t.post_count);
-  cell(tr, formatBytes(t.bytes));
-  cell(tr, formatTime(t.last_polled));
-  cell(tr, t.source);
+  cell(tr, "", "Thread").appendChild(link);
+  cell(tr, t.subject || "—", "Subject");
+  cell(tr, t.status, "Status").className = `status-${t.status}`;
+  cell(tr, t.post_count, "Posts");
+  cell(tr, formatBytes(t.bytes), "Size");
+  cell(tr, formatTime(t.last_polled), "Last poll");
+  cell(tr, t.source, "Source");
 
   const actions = cell(tr, "");
   const remove = document.createElement("button");

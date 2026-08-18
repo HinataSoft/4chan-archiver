@@ -47,3 +47,45 @@ th { background: var(--panel); }
 .media img.thumb { max-width: 250px; max-height: 250px; cursor: pointer; }
 #preview { position: absolute; z-index: 50; max-width: 500px;
            box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
+
+/* ── Mobil ────────────────────────────────────────────────────────────────
+   Bez <meta name="viewport"> renderuje mobilní prohlížeč na ~980 px a stránku
+   zmenší; ten tag je v HTML a tohle je zbytek: na úzkém displeji se tabulky
+   překlápějí na karty, dotykové cíle se zvětšují a hover náhled postu mizí. */
+
+@media (max-width: 720px) {
+  body { font-size: 15px; padding: 10px 12px; }
+  h1 { font-size: 18px; }
+
+  /* Delší dotykové cíle a 16px vstupy — pod 16 px iOS při focusu zoomuje. */
+  nav a { display: inline-block; padding: 6px 0; margin-right: 16px; }
+  button { padding: 9px 14px; font-size: 15px; }
+  input[type=text], select { font-size: 16px; padding: 8px; }
+  input[type=text] { flex: 1 1 100%; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+
+  .stats span { display: inline-block; margin: 0 14px 4px 0; }
+
+  /* Tabulka na karty: hlavička zmizí a jméno sloupce nese data-label,
+     které JS nastavuje v cell(). */
+  table, tbody, tr, td { display: block; width: auto; }
+  thead { display: none; }
+  tr { border: 1px solid var(--border); background: var(--panel);
+       margin-bottom: 10px; padding: 4px 2px; }
+  td { border: none; display: flex; gap: 10px; padding: 5px 8px; }
+  td::before { content: attr(data-label); font-weight: bold;
+               flex: 0 0 38%; color: var(--muted); }
+  td:not([data-label]) { justify-content: flex-start; gap: 8px; }
+  td input[type=text] { flex: 1 1 auto; min-width: 0; }
+
+  /* Post zabere šířku displeje místo šířky svého obsahu. */
+  .post { display: block; }
+  .media img.thumb { max-width: 100%; max-height: 320px; }
+
+  /* Na dotyku se hover náhled nikdy nezavře, tak ho vůbec neukazujeme. */
+  #preview { display: none; }
+}
+
+@media (hover: none) {
+  #preview { display: none; }
+}
