@@ -15,16 +15,32 @@ Web běží na `http://localhost:8080/`. Data (SQLite + archiv) jsou ve volume
 
 ### Nasazení pod prefixem cesty
 
-Chceš-li archiv na `https://example.com/4chan/` místo na vlastní doméně,
-použij `nginx/nginx-prefix.conf.example` — je to obdoba hlavního configu se
-všemi location bloky pod `/4chan/`.
+Chceš-li archiv na `https://example.com/4chan/`, **nech config tak, jak je**,
+a prefix odřízni na svém vnějším nginx:
 
-Klient sám o prefixu nic neví a nepotřebuje: odvozuje kořen aplikace z URL
-vlastního JS modulu (`import.meta.url`), takže všechny fetche i odkazy na
-média vedou pod stejný prefix, ať je jakýkoli. Jediné, co musí obsloužit
-nginx, je **redirect z `/4chan` na `/4chan/`** — bez koncového lomítka by se
-relativní cesty resolvovaly vůči kořeni domény a nenačetl by se ani JS, ani
-CSS. Ukázkový config ten redirect obsahuje.
+```nginx
+location = /4chan { return 301 /4chan/; }
+
+location /4chan/ {
+    proxy_pass http://localhost:8080/;   # koncové lomítko prefix odřízne
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+Aplikace pak o prefixu vůbec neví a **přímý přístup na `IP:8080/` funguje
+dál** — obojí současně.
+
+Klient prefix zvládne sám: kořen aplikace si odvozuje z URL vlastního JS
+modulu (`import.meta.url`), takže se ptá relativně a vnější nginx si prefix
+odřízne zpátky. Nutný je jen ten **redirect z `/4chan` na `/4chan/`** — bez
+koncového lomítka by se relativní cesty resolvovaly vůči kořeni domény a
+nenačetl by se ani JS, ani CSS.
+
+Když prefix odříznout nemůžeš (proxy není pod tvou kontrolou, nebo ho chceš
+mít i uvnitř), použij `nginx/nginx-prefix.conf.example` — hlavní config se
+všemi location bloky pod `/4chan/`. Pozor: ten už kořenové cesty neobsluhuje,
+takže přímý přístup na `IP:8080/` s ním vrací 404.
 
 ## Vývoj bez Dockeru
 

@@ -1,3 +1,10 @@
+# FALLBACK varianta: prefix obsluhovaný přímo tímto configem.
+#
+# Nejdřív zvaž jednodušší cestu z README: nech hlavní nginx.conf beze změny a
+# prefix odřízni na vnějším proxy (proxy_pass s koncovým lomítkem). Pak funguje
+# i přímý přístup na IP:port. Tenhle config kořenové cesty NEobsluhuje, takže
+# s ním přímý přístup na / vrací 404.
+#
 # Varianta configu pro nasazení pod prefixem cesty, např.
 # https://example.com/4chan/ místo vlastní domény.
 #
