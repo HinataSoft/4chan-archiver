@@ -216,6 +216,20 @@ def stats(conn) -> dict:
     }
 
 
+def failed_media_counts(conn, thread_ids) -> dict[int, int]:
+    """Počet médií se status='failed' pro dané thready. Selhání médií se nikdy
+    nepropíše do threads.last_error, takže bez tohohle čísla nemá UI jak zjistit,
+    že je co retryovat."""
+    ids = [int(i) for i in thread_ids]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        "SELECT thread_id, COUNT(*) c FROM media WHERE status = 'failed'"
+        f" AND thread_id IN ({placeholders}) GROUP BY thread_id", ids)
+    return {row["thread_id"]: row["c"] for row in rows}
+
+
 def media_for_thread(conn, thread_id) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT tim, ext, kind, status, bytes FROM media WHERE thread_id = ?"

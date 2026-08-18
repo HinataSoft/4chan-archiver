@@ -71,10 +71,14 @@ function renderThread(t) {
     await refresh();
   });
   actions.appendChild(remove);
-  if (t.last_error) {
+  // Selhání médií se nikdy nepropíše do threads.last_error, takže gate jen na
+  // last_error nechal zdravý live thread s 404 obrázkem navždy bez retry.
+  if (t.media_failed > 0 || t.last_error) {
     const retry = document.createElement("button");
     retry.textContent = "Retry médií";
-    retry.title = t.last_error;
+    retry.title = t.media_failed > 0
+      ? `${t.media_failed} médií selhalo`
+      : t.last_error;
     retry.onclick = () => run(async () => {
       await postJSON(`/api/threads/${t.id}/retry`);
       await refresh();

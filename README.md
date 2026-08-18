@@ -22,7 +22,10 @@ DATA_DIR=./data-dev .venv/bin/python -m app.worker
 ```
 
 `SERVE_STATIC=1` nechá FastAPI servírovat `/` a `/archive/` na stejných
-cestách, jaké v produkci obsluhuje nginx.
+cestách, jaké v produkci obsluhuje nginx. Je to **jen vývojová cesta**:
+`static/` záměrně není v Docker image (klient nemá build step, takže se do
+nginx kontejneru bind-mountuje z repa) a v produkci statiku vždycky servíruje
+nginx. Adresář se hledá relativně k `app/web.py`, takže na CWD nezáleží.
 
 Testy: `.venv/bin/python -m pytest`. Ukázková data pro klienta:
 `DATA_DIR=./data-dev python scripts/make_fixture.py`.

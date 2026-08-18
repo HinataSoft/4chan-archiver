@@ -1,6 +1,7 @@
 import re
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -10,17 +11,22 @@ from app.config import Config, load_config
 from app.db import connect
 from app.urls import parse_thread_url
 
+# Statika se hledá relativně k tomuhle souboru, ne k CWD — jinak SERVE_STATIC=1
+# spadne všude, kde se app nespouští z kořene repa.
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
 
 class ThreadIn(BaseModel):
     url: str
 
 
-def thread_json(row: sqlite3.Row) -> dict:
+def thread_json(row: sqlite3.Row, media_failed: int = 0) -> dict:
     data = {k: row[k] for k in (
         "id", "board", "no", "subject", "status", "source", "first_seen",
         "last_polled", "next_poll_at", "post_count", "bytes", "fail_count",
         "last_error", "died_at")}
     data["url"] = f"/archive/{row['board']}/{row['no']}/thread.json"
+    data["media_failed"] = media_failed
     return data
 
 
@@ -57,8 +63,16 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
     app = FastAPI(title="4chan archiver")
     app.state.cfg = cfg
 
+    # Schéma je jednorázový startovní krok; per-request connect() jen otevře
+    # databázi, místo aby pouštěl executescript(SCHEMA) při každém HTTP requestu.
+    # Není to lifespan handler proto, že httpx.ASGITransport lifespan nespouští,
+    # takže by testy běžely jinou cestou než produkce.
+    schema_ready = False
+
     def get_conn():
-        conn = connect(cfg.db_path)
+        nonlocal schema_ready
+        conn = connect(cfg.db_path, create_schema=not schema_ready)
+        schema_ready = True
         try:
             yield conn
         finally:
@@ -88,7 +102,8 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
                      conn=Depends(get_conn)):
         rows = repo.list_threads(conn, status=status, board=board, q=q,
                                  limit=limit, offset=offset)
-        return {"threads": [thread_json(r) for r in rows]}
+        failed = repo.failed_media_counts(conn, [r["id"] for r in rows])
+        return {"threads": [thread_json(r, failed.get(r["id"], 0)) for r in rows]}
 
     @app.delete("/api/threads/{thread_id}", status_code=204)
     def delete_thread(thread_id: int, conn=Depends(get_conn)):
@@ -147,7 +162,7 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
         from fastapi.staticfiles import StaticFiles
         cfg.archive_dir.mkdir(parents=True, exist_ok=True)
         app.mount("/archive", StaticFiles(directory=cfg.archive_dir), name="archive")
-        app.mount("/", StaticFiles(directory="static", html=True), name="static")
+        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
     return app
 

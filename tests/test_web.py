@@ -201,3 +201,88 @@ async def test_concurrent_requests_all_succeed(api, cfg, now):
         *(api.get("/api/threads") for _ in range(16)), return_exceptions=True)
     statuses = [r if isinstance(r, BaseException) else r.status_code for r in responses]
     assert statuses == [200] * 16
+
+
+async def test_thread_list_reports_failed_media_count(api, cfg, now):
+    """I2: selhání médií nikdy nesáhne na threads.last_error, takže UI potřebuje
+    vlastní počítadlo, jinak nemá jak nabídnout retry."""
+    from app.db import connect
+    await api.post("/api/threads", json={"url": "g/12345678"})
+    conn = connect(cfg.db_path)
+    tid = repo.find_thread(conn, "g", 12345678)["id"]
+    repo.add_media(conn, tid, 111, ".jpg", "file")
+    repo.add_media(conn, tid, 111, ".jpg", "thumb")
+    for _ in range(3):
+        repo.mark_media_failed(conn, tid, 111, "file", "HTTP 404")
+    conn.close()
+
+    row = (await api.get("/api/threads")).json()["threads"][0]
+    assert row["media_failed"] == 1
+    assert row["last_error"] is None      # thread je z pohledu polleru zdravý
+
+
+async def test_retry_clears_the_failed_media_count(api, cfg, now):
+    """I2: round-trip — po retry musí počítadlo spadnout na nulu a tlačítko zmizet."""
+    from app.db import connect
+    await api.post("/api/threads", json={"url": "g/12345678"})
+    conn = connect(cfg.db_path)
+    tid = repo.find_thread(conn, "g", 12345678)["id"]
+    repo.add_media(conn, tid, 111, ".jpg", "file")
+    for _ in range(3):
+        repo.mark_media_failed(conn, tid, 111, "file", "HTTP 404")
+    conn.close()
+
+    assert (await api.get("/api/threads")).json()["threads"][0]["media_failed"] == 1
+    assert (await api.post(f"/api/threads/{tid}/retry")).json() == {"requeued": 1}
+    assert (await api.get("/api/threads")).json()["threads"][0]["media_failed"] == 0
+
+
+async def test_failed_media_count_is_per_thread(api, cfg, now):
+    from app.db import connect
+    await api.post("/api/threads", json={"url": "g/1"})
+    await api.post("/api/threads", json={"url": "g/2"})
+    conn = connect(cfg.db_path)
+    broken = repo.find_thread(conn, "g", 1)["id"]
+    healthy = repo.find_thread(conn, "g", 2)["id"]
+    repo.add_media(conn, broken, 111, ".jpg", "file")
+    repo.add_media(conn, healthy, 222, ".jpg", "file")
+    for _ in range(3):
+        repo.mark_media_failed(conn, broken, 111, "file", "HTTP 404")
+    conn.close()
+
+    rows = {r["id"]: r["media_failed"]
+            for r in (await api.get("/api/threads")).json()["threads"]}
+    assert rows == {broken: 1, healthy: 0}
+
+
+async def test_schema_is_created_once_not_on_every_request(cfg, monkeypatch):
+    """Minor: connect() per request dřív pouštěl executescript(SCHEMA), tedy
+    6 DDL příkazů při každém HTTP requestu."""
+    from app import db
+
+    calls = []
+    real_init = db.init_schema
+    monkeypatch.setattr(db, "init_schema",
+                        lambda conn: (calls.append(1), real_init(conn))[-1])
+
+    app = create_app(cfg)
+    api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                            base_url="http://test")
+    for _ in range(3):
+        assert (await api.get("/api/threads")).status_code == 200
+    assert calls == [1]
+
+
+async def test_static_serving_does_not_depend_on_the_working_directory(cfg, tmp_path,
+                                                                      monkeypatch):
+    """Minor: StaticFiles(directory="static") bylo relativní k CWD, takže
+    SERVE_STATIC=1 spadlo všude mimo kořen repa."""
+    import dataclasses
+
+    monkeypatch.chdir(tmp_path)
+    app = create_app(dataclasses.replace(cfg, serve_static=True))
+    api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                            base_url="http://test")
+    resp = await api.get("/index.html")
+    assert resp.status_code == 200
+    assert "<html" in resp.text.lower()

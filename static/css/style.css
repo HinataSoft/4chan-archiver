@@ -31,6 +31,7 @@ th { background: var(--panel); }
 .post:target, .post.flash { background: #f0c0b4; border-color: #d99f91; }
 .post.deleted { border-left: 4px solid var(--dead); }
 .deleted-note { color: var(--dead); font-weight: bold; margin-left: 6px; }
+.media.file-deleted { border-left: 4px solid var(--dead); padding-left: 6px; }
 .post-header { margin-bottom: 4px; }
 .post-subject { color: var(--subject); font-weight: bold; }
 .post-name { color: var(--name); font-weight: bold; }

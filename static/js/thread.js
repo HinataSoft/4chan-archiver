@@ -113,9 +113,23 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
     el.appendChild(box);
   }
 
-  if (post.tim && post.ext && !post.filedeleted) {
-    el.appendChild(fileInfo(post));
-    el.appendChild(renderMedia(post, mediaState));
+  // Soubor smazaný moderátorem zůstává v archivu — bajty na disku většinou jsou
+  // z dřívějšího pollu a často jsou právě tím, kvůli čemu se thread archivoval.
+  // Vykreslíme ho tedy stejně jako _deleted post: viditelně označený, ne tiše
+  // zmizelý. Když ho archiv nemá, chování zůstává původní (nic).
+  const archived = mediaState[String(post.tim)]?.file === "ok";
+  if (post.tim && post.ext && (!post.filedeleted || archived)) {
+    const info = fileInfo(post);
+    if (post.filedeleted) {
+      const note = document.createElement("span");
+      note.className = "deleted-note";
+      note.textContent = "[soubor smazán moderátorem]";
+      info.appendChild(note);
+    }
+    el.appendChild(info);
+    const box = renderMedia(post, mediaState);
+    if (post.filedeleted) box.classList.add("file-deleted");
+    el.appendChild(box);
   }
 
   const comment = document.createElement("blockquote");
@@ -140,7 +154,7 @@ function flash(target) {
   setTimeout(() => target.classList.remove("flash"), 1200);
 }
 
-function wireQuoteLinks(byNumber) {
+function wireQuoteLinks() {
   postsEl.addEventListener("click", (event) => {
     const link = event.target.closest("a[data-target]");
     if (!link) return;
@@ -212,7 +226,7 @@ async function main() {
   wireQuoteLinks();
 
   if (location.hash) {
-    const target = document.querySelector(location.hash);
+    const target = document.getElementById(location.hash.slice(1));
     if (target) { target.scrollIntoView({ block: "center" }); flash(target); }
   }
 }

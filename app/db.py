@@ -57,7 +57,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
+def connect(db_path: Path, *, create_schema: bool = True) -> sqlite3.Connection:
+    """Otevře databázi. create_schema=False přeskočí DDL — web ho pouští
+    jednou při startu, ne při každém requestu."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # check_same_thread=False: FastAPI dispatchuje sync dependency a sync handler
@@ -71,5 +73,6 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
-    init_schema(conn)
+    if create_schema:
+        init_schema(conn)
     return conn
