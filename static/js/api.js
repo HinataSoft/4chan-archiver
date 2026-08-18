@@ -1,10 +1,22 @@
+// Tento modul se servíruje jako <kořen>js/api.js, takže kořen aplikace je
+// o úroveň výš. Odvození z vlastní URL modulu drží klienta funkční i pod
+// prefixem cesty (example.com/4chan/) bez konfigurace a bez build stepu —
+// na rozdíl od location.pathname nezáleží na tom, jestli adresa stránky
+// končí lomítkem.
+const ROOT = new URL("../", import.meta.url);
+
+// Přijímá "/api/stats" i "api/stats"; obojí se resolvuje vůči kořeni.
+export function appUrl(path) {
+  return new URL(String(path).replace(/^\/+/, ""), ROOT).href;
+}
+
 async function request(method, path, body) {
   const options = { method, headers: {} };
   if (body !== undefined) {
     options.headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(body);
   }
-  const resp = await fetch(path, options);
+  const resp = await fetch(appUrl(path), options);
   if (!resp.ok) {
     let detail = `HTTP ${resp.status}`;
     try {

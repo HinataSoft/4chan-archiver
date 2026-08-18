@@ -1,0 +1,67 @@
+# Varianta configu pro nasazení pod prefixem cesty, např.
+# https://example.com/4chan/ místo vlastní domény.
+#
+# Klient používá relativní cesty odvozené z URL vlastního JS modulu, takže
+# nepotřebuje vědět, jaký prefix je nastavený — stačí, aby ho nginx obsloužil
+# celý. Chceš-li jiný prefix než /4chan/, přepiš ho všude níže.
+#
+# Použití: nahraď tímto obsahem nginx/nginx.conf (nebo přidej jako další
+# server blok do své existující konfigurace).
+
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 1m;
+
+    auth_basic "4chan archive";
+    auth_basic_user_file /etc/nginx/htpasswd;
+
+    # Bez tohoto redirectu by /4chan (bez koncového lomítka) resolvoval
+    # relativní cesty klienta vůči kořeni a nenačetl by se ani JS, ani CSS.
+    location = /4chan { return 301 /4chan/; }
+
+    location /4chan/api/ {
+        # Koncové /api/ v proxy_pass odřízne prefix, takže aplikace vidí
+        # svoje vlastní cesty (/api/threads) a nemusí o prefixu vědět.
+        proxy_pass http://app:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # thread.json se přepisuje při každém pollu, immutable by živý thread
+    # zmrazil na rok. Regex location má přednost před prefixem.
+    location ~ ^/4chan/archive/(?<archived_json>[^/]+/[0-9]+/thread\.json)$ {
+        alias /data/archive/$archived_json;
+        default_type application/json;
+        add_header Cache-Control "no-cache";
+        add_header X-Content-Type-Options "nosniff";
+    }
+
+    location /4chan/archive/ {
+        alias /data/archive/;
+        autoindex off;
+        # Média jsou pojmenovaná podle neměnného `tim`, obsah se nikdy nemění.
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        # Bajty pod archivem dodal 4chan, ne my, a servírují se z vlastního
+        # originu aplikace. Neznámá přípona tedy padá na octet-stream a nosniff
+        # brání prohlížeči domýšlet si typ.
+        default_type application/octet-stream;
+        add_header X-Content-Type-Options "nosniff";
+        types {
+            application/json json;
+            image/jpeg       jpg jpeg;
+            image/png        png;
+            image/gif        gif;
+            image/webp       webp;
+            video/webm       webm;
+            video/mp4        mp4;
+        }
+    }
+
+    location = /4chan/archive/ { return 404; }
+
+    location /4chan/ {
+        alias /srv/static/;
+        try_files $uri $uri/ =404;
+    }
+}

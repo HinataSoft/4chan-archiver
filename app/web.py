@@ -25,7 +25,9 @@ def thread_json(row: sqlite3.Row, media_failed: int = 0) -> dict:
         "id", "board", "no", "subject", "status", "source", "first_seen",
         "last_polled", "next_poll_at", "post_count", "bytes", "fail_count",
         "last_error", "died_at")}
-    data["url"] = f"/archive/{row['board']}/{row['no']}/thread.json"
+    # Relativní ke kořeni aplikace, aby cesta platila i pod prefixem
+    # (example.com/4chan/) — klient si ji resolvuje stejně jako své fetche.
+    data["url"] = f"archive/{row['board']}/{row['no']}/thread.json"
     data["media_failed"] = media_failed
     return data
 

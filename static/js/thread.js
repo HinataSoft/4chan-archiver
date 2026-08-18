@@ -1,4 +1,4 @@
-import { formatBytes } from "./api.js";
+import { appUrl, formatBytes } from "./api.js";
 import { quotedNumbers, renderComment } from "./comment.js";
 
 const params = new URLSearchParams(location.search);
@@ -10,7 +10,7 @@ const previewEl = document.getElementById("preview");
 const VIDEO = new Set([".webm", ".mp4"]);
 
 function mediaBase(post) {
-  return `/archive/${board}/${no}/${post.tim}`;
+  return appUrl(`archive/${board}/${no}/${post.tim}`);
 }
 
 function fileInfo(post) {
@@ -189,7 +189,7 @@ async function main() {
   }
   let doc;
   try {
-    const resp = await fetch(`/archive/${board}/${no}/thread.json`, { cache: "no-cache" });
+    const resp = await fetch(appUrl(`archive/${board}/${no}/thread.json`), { cache: "no-cache" });
     if (!resp.ok) throw new Error(`thread is not in the archive (HTTP ${resp.status})`);
     doc = await resp.json();
   } catch (err) {

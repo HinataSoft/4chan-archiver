@@ -21,7 +21,7 @@ async def test_add_thread_by_url(api, cfg):
     assert body["no"] == 12345678
     assert body["status"] == "live"
     assert body["source"] == "manual"
-    assert body["url"] == "/archive/g/12345678/thread.json"
+    assert body["url"] == "archive/g/12345678/thread.json"
 
 
 async def test_add_thread_rejects_garbage_url(api):

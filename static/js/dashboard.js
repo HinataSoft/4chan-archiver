@@ -1,4 +1,4 @@
-import { del, formatBytes, formatTime, getJSON, postJSON } from "./api.js";
+import { appUrl, del, formatBytes, formatTime, getJSON, postJSON } from "./api.js";
 
 const tbody = document.getElementById("threads");
 const addError = document.getElementById("add-error");
@@ -52,7 +52,7 @@ function renderThread(t) {
   const tr = document.createElement("tr");
   cell(tr, t.board);
   const link = document.createElement("a");
-  link.href = `/thread.html?b=${encodeURIComponent(t.board)}&no=${t.no}`;
+  link.href = appUrl(`thread.html?b=${encodeURIComponent(t.board)}&no=${t.no}`);
   link.textContent = t.no;
   cell(tr, "").appendChild(link);
   cell(tr, t.subject || "—");

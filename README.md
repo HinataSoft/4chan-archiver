@@ -13,6 +13,19 @@ docker compose up --build -d
 Web běží na `http://localhost:8080/`. Data (SQLite + archiv) jsou ve volume
 `archive`, struktura `archive/<board>/<thread id>/`.
 
+### Nasazení pod prefixem cesty
+
+Chceš-li archiv na `https://example.com/4chan/` místo na vlastní doméně,
+použij `nginx/nginx-prefix.conf.example` — je to obdoba hlavního configu se
+všemi location bloky pod `/4chan/`.
+
+Klient sám o prefixu nic neví a nepotřebuje: odvozuje kořen aplikace z URL
+vlastního JS modulu (`import.meta.url`), takže všechny fetche i odkazy na
+média vedou pod stejný prefix, ať je jakýkoli. Jediné, co musí obsloužit
+nginx, je **redirect z `/4chan` na `/4chan/`** — bez koncového lomítka by se
+relativní cesty resolvovaly vůči kořeni domény a nenačetl by se ani JS, ani
+CSS. Ukázkový config ten redirect obsahuje.
+
 ## Vývoj bez Dockeru
 
 ```bash
