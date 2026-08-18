@@ -21,9 +21,9 @@ class ThreadRef:
 def parse_thread_url(raw: str) -> ThreadRef:
     text = (raw or "").strip()
     if not text:
-        raise ValueError("prázdný vstup")
+        raise ValueError("empty input")
     for pattern in (_FULL, _PATH, _SHORT):
         m = pattern.match(text)
         if m:
             return ThreadRef(board=m.group("board").lower(), no=int(m.group("no")))
-    raise ValueError(f"nerozpoznané URL threadu: {raw!r}")
+    raise ValueError(f"unrecognised thread URL: {raw!r}")

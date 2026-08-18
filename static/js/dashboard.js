@@ -29,10 +29,10 @@ async function loadStats() {
     `live: <b>${s.threads.live}</b>`,
     `dead: <b>${s.threads.dead}</b>`,
     `error: <b>${s.threads.error}</b>`,
-    `média: <b>${formatBytes(s.media_bytes)}</b>`,
-    `ke stažení: <b>${s.media_pending}</b>`,
-    `selhalo: <b>${s.media_failed}</b>`,
-    `poslední poll: <b>${formatTime(s.last_polled)}</b>`,
+    `media: <b>${formatBytes(s.media_bytes)}</b>`,
+    `pending: <b>${s.media_pending}</b>`,
+    `failed: <b>${s.media_failed}</b>`,
+    `last poll: <b>${formatTime(s.last_polled)}</b>`,
   ];
   for (const html of items) {
     const span = document.createElement("span");
@@ -64,9 +64,9 @@ function renderThread(t) {
 
   const actions = cell(tr, "");
   const remove = document.createElement("button");
-  remove.textContent = "Smazat";
+  remove.textContent = "Delete";
   remove.onclick = () => run(async () => {
-    if (!confirm(`Smazat ${t.board}/${t.no} včetně médií?`)) return;
+    if (!confirm(`Delete ${t.board}/${t.no} including its media?`)) return;
     await del(`/api/threads/${t.id}`);
     await refresh();
   });
@@ -75,9 +75,9 @@ function renderThread(t) {
   // last_error nechal zdravý live thread s 404 obrázkem navždy bez retry.
   if (t.media_failed > 0 || t.last_error) {
     const retry = document.createElement("button");
-    retry.textContent = "Retry médií";
+    retry.textContent = "Retry media";
     retry.title = t.media_failed > 0
-      ? `${t.media_failed} médií selhalo`
+      ? `${t.media_failed} media downloads failed`
       : t.last_error;
     retry.onclick = () => run(async () => {
       await postJSON(`/api/threads/${t.id}/retry`);

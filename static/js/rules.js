@@ -64,9 +64,9 @@ function renderRule(rule) {
   cell(tr, rule.last_error || "—");
 
   const remove = document.createElement("button");
-  remove.textContent = "Smazat";
+  remove.textContent = "Delete";
   remove.onclick = () => run(async () => {
-    if (!confirm(`Smazat pravidlo pro /${rule.board}/?`)) return;
+    if (!confirm(`Delete the rule for /${rule.board}/?`)) return;
     await del(`/api/rules/${rule.id}`);
     await refresh();
   });

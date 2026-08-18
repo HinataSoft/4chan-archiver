@@ -92,7 +92,7 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
             raise HTTPException(400, str(exc))
         thread_id = repo.add_thread(conn, ref.board, ref.no, "manual", now())
         if thread_id is None:
-            raise HTTPException(409, f"thread {ref.board}/{ref.no} už je sledován")
+            raise HTTPException(409, f"thread {ref.board}/{ref.no} is already tracked")
         return thread_json(repo.get_thread(conn, thread_id))
 
     @app.get("/api/threads")
@@ -109,7 +109,7 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
     def delete_thread(thread_id: int, conn=Depends(get_conn)):
         row = repo.get_thread(conn, thread_id)
         if row is None:
-            raise HTTPException(404, "thread neexistuje")
+            raise HTTPException(404, "thread not found")
         archive.delete_thread_dir(cfg.archive_dir, row["board"], row["no"])
         repo.delete_thread(conn, thread_id)
         return Response(status_code=204)
@@ -117,7 +117,7 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
     @app.post("/api/threads/{thread_id}/retry")
     def retry_media(thread_id: int, conn=Depends(get_conn)):
         if repo.get_thread(conn, thread_id) is None:
-            raise HTTPException(404, "thread neexistuje")
+            raise HTTPException(404, "thread not found")
         return {"requeued": repo.retry_failed_media(conn, thread_id)}
 
     @app.get("/api/rules")
@@ -128,29 +128,29 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
     def create_rule(payload: RuleIn, conn=Depends(get_conn)):
         board = payload.board.strip().strip("/").lower()
         if not BOARD_RE.match(board):
-            raise HTTPException(400, f"neplatné jméno boardu: {payload.board!r}")
+            raise HTTPException(400, f"invalid board name: {payload.board!r}")
         keywords = _clean_keywords(payload.keywords)
         if not keywords:
-            raise HTTPException(400, "pravidlo potřebuje aspoň jedno klíčové slovo")
+            raise HTTPException(400, "a rule needs at least one keyword")
         rule_id = repo.add_rule(conn, board, keywords, now())
         return rule_json(repo.get_rule(conn, rule_id))
 
     @app.patch("/api/rules/{rule_id}")
     def patch_rule(rule_id: int, payload: RulePatch, conn=Depends(get_conn)):
         if repo.get_rule(conn, rule_id) is None:
-            raise HTTPException(404, "pravidlo neexistuje")
+            raise HTTPException(404, "rule not found")
         keywords = None
         if payload.keywords is not None:
             keywords = _clean_keywords(payload.keywords)
             if not keywords:
-                raise HTTPException(400, "pravidlo potřebuje aspoň jedno klíčové slovo")
+                raise HTTPException(400, "a rule needs at least one keyword")
         repo.update_rule(conn, rule_id, keywords=keywords, enabled=payload.enabled)
         return rule_json(repo.get_rule(conn, rule_id))
 
     @app.delete("/api/rules/{rule_id}", status_code=204)
     def delete_rule(rule_id: int, conn=Depends(get_conn)):
         if repo.get_rule(conn, rule_id) is None:
-            raise HTTPException(404, "pravidlo neexistuje")
+            raise HTTPException(404, "rule not found")
         repo.delete_rule(conn, rule_id)
         return Response(status_code=204)
 

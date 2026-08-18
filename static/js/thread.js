@@ -19,7 +19,7 @@ function fileInfo(post) {
   const dims = post.w && post.h ? `, ${post.w}x${post.h}` : "";
   const info = document.createElement("div");
   info.className = "file-info";
-  info.append("Soubor: ");
+  info.append("File: ");
   const link = document.createElement("a");
   link.href = `${mediaBase(post)}${post.ext}`;
   link.download = name;
@@ -34,7 +34,7 @@ function renderMedia(post, mediaState) {
   box.className = "media";
   const state = mediaState[String(post.tim)] || {};
   if (state.file === "failed" && state.thumb === "failed") {
-    box.textContent = "[médium se nepodařilo stáhnout]";
+    box.textContent = "[media could not be downloaded]";
     return box;
   }
 
@@ -93,7 +93,7 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
   if (post._deleted) {
     const note = document.createElement("span");
     note.className = "deleted-note";
-    note.textContent = "[smazáno moderátorem]";
+    note.textContent = "[deleted by moderator]";
     header.appendChild(note);
   }
   el.appendChild(header);
@@ -102,7 +102,7 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
   if (replies && replies.length) {
     const box = document.createElement("div");
     box.className = "backlinks";
-    box.append("Odpovědi: ");
+    box.append("Replies: ");
     for (const target of replies) {
       const link = document.createElement("a");
       link.href = `#p${target}`;
@@ -123,7 +123,7 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
     if (post.filedeleted) {
       const note = document.createElement("span");
       note.className = "deleted-note";
-      note.textContent = "[soubor smazán moderátorem]";
+      note.textContent = "[file deleted by moderator]";
       info.appendChild(note);
     }
     el.appendChild(info);
@@ -145,7 +145,7 @@ function renderFailedPost(post) {
   const el = document.createElement("div");
   el.className = "post render-failed";
   if (post && post.no != null) el.id = `p${post.no}`;
-  el.textContent = `[post ${post && post.no != null ? post.no : "?"} se nepodařilo zobrazit]`;
+  el.textContent = `[post ${post && post.no != null ? post.no : "?"} could not be rendered]`;
   return el;
 }
 
@@ -184,13 +184,13 @@ function wireQuoteLinks() {
 
 async function main() {
   if (!board || !Number.isInteger(no)) {
-    document.getElementById("error").textContent = "chybí parametry ?b= a ?no=";
+    document.getElementById("error").textContent = "missing ?b= and ?no= parameters";
     return;
   }
   let doc;
   try {
     const resp = await fetch(`/archive/${board}/${no}/thread.json`, { cache: "no-cache" });
-    if (!resp.ok) throw new Error(`thread není v archivu (HTTP ${resp.status})`);
+    if (!resp.ok) throw new Error(`thread is not in the archive (HTTP ${resp.status})`);
     doc = await resp.json();
   } catch (err) {
     document.getElementById("error").textContent = err.message;
@@ -209,16 +209,16 @@ async function main() {
   }
 
   const subject = posts[0]?.sub || `/${board}/ ${no}`;
-  document.title = `${subject} — 4chan archiv`;
+  document.title = `${subject} — 4chan archive`;
   document.getElementById("title").textContent =
-    `${subject} (/${board}/${no}, ${posts.length} postů${doc.status === "dead" ? ", smazán" : ""})`;
+    `${subject} (/${board}/${no}, ${posts.length} posts${doc.status === "dead" ? ", deleted" : ""})`;
 
   const mediaState = doc.media || {};
   const rendered = posts.map((p, i) => {
     try {
       return renderPost(p, i, knownPosts, backlinks, mediaState);
     } catch (err) {
-      console.error(`post č. ${p.no} se nepodařilo vykreslit`, err);
+      console.error(`failed to render post ${p.no}`, err);
       return renderFailedPost(p);
     }
   });

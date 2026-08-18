@@ -45,7 +45,7 @@ function convert(node, knownPosts, out) {
       link.dataset.target = String(target);
     } else {
       link.classList.add("dead");        // odkaz mimo tento thread
-      link.title = "post není v tomto threadu";
+      link.title = "post is not in this thread";
     }
     out.appendChild(link);
     return;

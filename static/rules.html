@@ -1,30 +1,30 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Pravidla — 4chan archiv</title>
+  <title>Rules — 4chan archive</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <h1>Pravidla automatického stahování</h1>
-  <nav><a href="/">Thready</a><a href="/rules.html">Pravidla</a></nav>
+  <h1>Automatic download rules</h1>
+  <nav><a href="/">Threads</a><a href="/rules.html">Rules</a></nav>
 
   <div class="panel">
     <form class="row" id="add-form">
-      <input type="text" id="board" placeholder="board (např. g)" size="8" required>
+      <input type="text" id="board" placeholder="board (e.g. g)" size="8" required>
       <input type="text" id="keywords"
-             placeholder="klíčová slova oddělená čárkou" required>
-      <button type="submit">Přidat pravidlo</button>
+             placeholder="comma-separated keywords" required>
+      <button type="submit">Add rule</button>
     </form>
     <div class="error" id="add-error"></div>
-    <p>Thread se zařadí, když se některé klíčové slovo objeví v názvu nebo
-       v textu prvního postu (nezáleží na velikosti písmen).</p>
+    <p>A thread is queued when one of the keywords appears in its subject
+       or in the text of the first post (case-insensitive).</p>
   </div>
 
   <table>
     <thead><tr>
-      <th>Board</th><th>Klíčová slova</th><th>Aktivní</th>
-      <th>Poslední sken</th><th>Chyba</th><th></th>
+      <th>Board</th><th>Keywords</th><th>Enabled</th>
+      <th>Last scan</th><th>Error</th><th></th>
     </tr></thead>
     <tbody id="rules"></tbody>
   </table>
