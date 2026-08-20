@@ -14,10 +14,31 @@ def next_interval(cfg: Config, current: int, changed: bool) -> int:
     return min(int(current * 1.5), cfg.poll_max_interval)
 
 
+SUBJECT_FALLBACK_CHARS = 70
+
+
 def _subject(posts: list[dict]) -> str | None:
+    """Název threadu pro výpis: subject OP postu, a když chybí — což je na
+    4chanu běžné — začátek jeho textu, aby řádek v seznamu nebyl prázdný."""
     if not posts:
         return None
-    return html_to_text(posts[0].get("sub")) or None
+    subject = html_to_text(posts[0].get("sub"))
+    if subject:
+        return subject
+    return _excerpt(html_to_text(posts[0].get("com")))
+
+
+def _excerpt(text: str) -> str | None:
+    """Zkrátí na SUBJECT_FALLBACK_CHARS, ale na hranici slova, ne uprostřed."""
+    if not text:
+        return None
+    if len(text) <= SUBJECT_FALLBACK_CHARS:
+        return text
+    cut = text[:SUBJECT_FALLBACK_CHARS]
+    space = cut.rfind(" ")
+    if space > SUBJECT_FALLBACK_CHARS // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,.;:-") + "…"
 
 
 async def _poll_once(conn, client, cfg: Config, row, now: datetime) -> str:

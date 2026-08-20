@@ -56,7 +56,18 @@ function renderMedia(post, mediaState) {
       video.autoplay = true;
       video.onclick = (e) => { e.stopPropagation(); };
       video.ondblclick = () => box.replaceChildren(thumb);
-      box.replaceChildren(video);
+      // Vlastní ovládání videa spolkne klik i dvojklik, takže bez tohohle
+      // odkazu není přehrané video jak zavřít — stejně jako Close na 4chanu.
+      const close = document.createElement("a");
+      close.className = "media-close";
+      close.href = "#";
+      close.textContent = "Close";
+      close.onclick = (e) => {
+        e.preventDefault();
+        video.pause();
+        box.replaceChildren(thumb);
+      };
+      box.replaceChildren(close, video);
     } else {
       const full = document.createElement("img");
       full.src = `${mediaBase(post)}${post.ext}`;

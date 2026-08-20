@@ -51,6 +51,13 @@ function cell(row, text, label) {
   return td;
 }
 
+// Živý thread je běžný stav, takže se nijak neznačí; smazaný a chybující
+// nesou značku u názvu, aby stav nepotřeboval vlastní sloupec.
+const MARKS = {
+  dead: { glyph: "💀", label: "thread was deleted from 4chan" },
+  error: { glyph: "⚠️", label: "polling is failing" },
+};
+
 function renderThread(t) {
   const tr = document.createElement("tr");
   cell(tr, t.board, "Board");
@@ -58,12 +65,21 @@ function renderThread(t) {
   link.href = appUrl(`thread.html?b=${encodeURIComponent(t.board)}&no=${t.no}`);
   link.textContent = t.no;
   cell(tr, "", "Thread").appendChild(link);
-  cell(tr, t.subject || "—", "Subject");
-  cell(tr, t.status, "Status").className = `status-${t.status}`;
+
+  const subject = cell(tr, "", "Subject");
+  const mark = MARKS[t.status];
+  if (mark) {
+    const badge = document.createElement("span");
+    badge.className = `thread-mark ${t.status}`;
+    badge.textContent = mark.glyph;
+    badge.title = t.status === "error" && t.last_error
+      ? `${mark.label}: ${t.last_error}`
+      : mark.label;
+    subject.append(badge, " ");
+  }
+  subject.append(t.subject || "—");
+
   cell(tr, t.post_count, "Posts");
-  cell(tr, formatBytes(t.bytes), "Size");
-  cell(tr, formatTime(t.last_polled), "Last poll");
-  cell(tr, t.source, "Source");
 
   const actions = cell(tr, "");
   const remove = document.createElement("button");

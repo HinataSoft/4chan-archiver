@@ -161,3 +161,47 @@ async def test_disk_failure_does_not_stall_the_poll_queue(conn, client, cfg, fak
 
     # Otrávený thread už nesmí blokovat frontu v témže okamžiku.
     assert [r["id"] for r in repo.due_threads(conn, now, 10)] == []
+
+
+async def test_subject_falls_back_to_the_start_of_the_op_text(conn, client, cfg, fake, now):
+    fake.set_thread("g", 500, [{"no": 500, "com": "anyone here running Zig in prod?"}])
+    tid = repo.add_thread(conn, "g", 500, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+    assert repo.get_thread(conn, tid)["subject"] == "anyone here running Zig in prod?"
+
+
+async def test_subject_prefers_the_real_subject_over_the_text(conn, client, cfg, fake, now):
+    fake.set_thread("g", 501, [{"no": 501, "sub": "Rust General", "com": "memory safety"}])
+    tid = repo.add_thread(conn, "g", 501, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+    assert repo.get_thread(conn, tid)["subject"] == "Rust General"
+
+
+async def test_long_op_text_is_cut_on_a_word_boundary(conn, client, cfg, fake, now):
+    long_text = "the quick brown fox jumps over the lazy dog while everyone watches it happen"
+    fake.set_thread("g", 502, [{"no": 502, "com": long_text}])
+    tid = repo.add_thread(conn, "g", 502, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+
+    subject = repo.get_thread(conn, tid)["subject"]
+    assert subject.endswith("…")
+    assert len(subject) <= poller.SUBJECT_FALLBACK_CHARS + 1
+    assert long_text.startswith(subject[:-1])   # jen zkráceno, nic přepsáno
+    assert not subject[:-1].endswith(" ")       # neseklo uprostřed slova
+
+
+async def test_html_and_quotelinks_do_not_leak_into_the_subject(conn, client, cfg, fake, now):
+    fake.set_thread("g", 503, [{
+        "no": 503,
+        "com": '<a href="#p1" class="quotelink">&gt;&gt;1</a><br>cats &amp; dogs',
+    }])
+    tid = repo.add_thread(conn, "g", 503, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+    assert repo.get_thread(conn, tid)["subject"] == ">>1 cats & dogs"
+
+
+async def test_text_only_op_with_no_subject_and_no_text_stays_empty(conn, client, cfg, fake, now):
+    fake.set_thread("g", 504, [{"no": 504}])
+    tid = repo.add_thread(conn, "g", 504, "manual", now)
+    await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
+    assert repo.get_thread(conn, tid)["subject"] is None

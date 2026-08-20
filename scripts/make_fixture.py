@@ -82,6 +82,19 @@ def main() -> None:
                      poll_interval=60, last_modified=None, post_count=4,
                      subject="Daily Programming Thread")
     repo.recompute_thread_bytes(conn, tid)
+
+    # Mrtvý a chybující thread, aby šly ověřit značky u názvu v seznamu.
+    dead = get_or_create_thread(conn, "g", 12340001, "manual", now)
+    repo.mark_polled(conn, dead, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=2,
+                     subject="thread that got nuked")
+    repo.mark_dead(conn, dead, now)
+
+    broken = get_or_create_thread(conn, "g", 12340002, "manual", now)
+    for _ in range(10):
+        repo.mark_failure(conn, broken, now=now, error="ConnectError: network down",
+                          next_poll_at=now + timedelta(seconds=600), poll_interval=600)
+
     conn.close()
     print(f"fixture zapsána do {cfg.data_dir}")
 
