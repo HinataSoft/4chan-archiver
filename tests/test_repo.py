@@ -186,3 +186,62 @@ def test_stats_counts_by_status(conn, now):
     assert s["threads"]["error"] == 0
     assert s["media_bytes"] == 5000
     assert s["media_failed"] == 0
+
+
+def test_disabling_takes_a_thread_out_of_the_poll_queue(conn, now):
+    tid = repo.add_thread(conn, "g", 1, "manual", now)
+    assert [r["id"] for r in repo.due_threads(conn, now, 10)] == [tid]
+
+    assert repo.set_thread_enabled(conn, tid, enabled=False, now=now,
+                                   poll_interval=60) is True
+    assert repo.get_thread(conn, tid)["status"] == "disabled"
+    assert repo.due_threads(conn, now, 10) == []
+
+
+def test_enabling_puts_it_back_and_clears_past_failures(conn, now):
+    from datetime import timedelta
+    tid = repo.add_thread(conn, "g", 1, "manual", now)
+    for _ in range(10):
+        repo.mark_failure(conn, tid, now=now, error="boom",
+                          next_poll_at=now + timedelta(seconds=600), poll_interval=600)
+    assert repo.get_thread(conn, tid)["status"] == "error"
+
+    repo.set_thread_enabled(conn, tid, enabled=False, now=now, poll_interval=60)
+    later = now + timedelta(hours=2)
+    assert repo.set_thread_enabled(conn, tid, enabled=True, now=later,
+                                   poll_interval=60) is True
+
+    row = repo.get_thread(conn, tid)
+    assert row["status"] == "live"
+    assert row["fail_count"] == 0
+    assert row["last_error"] is None
+    assert row["poll_interval"] == 60
+    assert [r["id"] for r in repo.due_threads(conn, later, 10)] == [tid]
+
+
+def test_a_dead_thread_cannot_be_disabled_or_revived(conn, now):
+    tid = repo.add_thread(conn, "g", 1, "manual", now)
+    repo.mark_dead(conn, tid, now)
+
+    assert repo.set_thread_enabled(conn, tid, enabled=False, now=now,
+                                   poll_interval=60) is False
+    assert repo.set_thread_enabled(conn, tid, enabled=True, now=now,
+                                   poll_interval=60) is False
+    assert repo.get_thread(conn, tid)["status"] == "dead"
+
+
+def test_repeating_a_transition_reports_no_change(conn, now):
+    tid = repo.add_thread(conn, "g", 1, "manual", now)
+    assert repo.set_thread_enabled(conn, tid, enabled=False, now=now,
+                                   poll_interval=60) is True
+    assert repo.set_thread_enabled(conn, tid, enabled=False, now=now,
+                                   poll_interval=60) is False
+
+
+def test_disabled_threads_are_counted_in_stats(conn, now):
+    tid = repo.add_thread(conn, "g", 1, "manual", now)
+    repo.add_thread(conn, "g", 2, "manual", now)
+    repo.set_thread_enabled(conn, tid, enabled=False, now=now, poll_interval=60)
+
+    s = repo.stats(conn)
+    assert s["threads"] == {"live": 1, "dead": 0, "error": 0, "disabled": 1}

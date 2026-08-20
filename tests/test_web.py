@@ -176,7 +176,7 @@ async def test_stats_shape(api, cfg, now):
     conn.close()
 
     body = (await api.get("/api/stats")).json()
-    assert body["threads"] == {"live": 1, "dead": 0, "error": 0}
+    assert body["threads"] == {"live": 1, "dead": 0, "error": 0, "disabled": 0}
     assert body["media_bytes"] == 1234
     assert body["media_pending"] == 0
     assert body["recent_errors"] == []
@@ -286,3 +286,51 @@ async def test_static_serving_does_not_depend_on_the_working_directory(cfg, tmp_
     resp = await api.get("/index.html")
     assert resp.status_code == 200
     assert "<html" in resp.text.lower()
+
+
+async def test_disable_and_enable_a_thread_through_the_api(api, cfg):
+    created = (await api.post("/api/threads", json={"url": "g/4242"})).json()
+    tid = created["id"]
+    assert created["status"] == "live"
+
+    disabled = await api.patch(f"/api/threads/{tid}", json={"enabled": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["status"] == "disabled"
+    assert (await api.get("/api/threads")).json()["threads"][0]["status"] == "disabled"
+
+    enabled = await api.patch(f"/api/threads/{tid}", json={"enabled": True})
+    assert enabled.status_code == 200
+    assert enabled.json()["status"] == "live"
+
+
+async def test_disabled_thread_is_filterable_and_counted(api):
+    tid = (await api.post("/api/threads", json={"url": "g/4243"})).json()["id"]
+    await api.patch(f"/api/threads/{tid}", json={"enabled": False})
+
+    assert len((await api.get("/api/threads?status=disabled")).json()["threads"]) == 1
+    assert len((await api.get("/api/threads?status=live")).json()["threads"]) == 0
+    assert (await api.get("/api/stats")).json()["threads"]["disabled"] == 1
+
+
+async def test_disabling_twice_is_a_conflict(api):
+    tid = (await api.post("/api/threads", json={"url": "g/4244"})).json()["id"]
+    await api.patch(f"/api/threads/{tid}", json={"enabled": False})
+
+    again = await api.patch(f"/api/threads/{tid}", json={"enabled": False})
+    assert again.status_code == 409
+    assert "disabled" in again.json()["detail"]
+
+
+async def test_patching_an_unknown_thread_is_404(api):
+    resp = await api.patch("/api/threads/9999", json={"enabled": False})
+    assert resp.status_code == 404
+
+
+async def test_disabling_keeps_the_archive_on_disk(api, cfg, now):
+    from app import archive
+    tid = (await api.post("/api/threads", json={"url": "g/4245"})).json()["id"]
+    archive.save_thread(cfg.archive_dir, archive.new_document("g", 4245, now))
+    directory = archive.thread_dir(cfg.archive_dir, "g", 4245)
+
+    await api.patch(f"/api/threads/{tid}", json={"enabled": False})
+    assert (directory / "thread.json").exists()

@@ -105,3 +105,33 @@ async def test_delete_from_api_removes_media_from_disk(api, client, cfg, fake, n
 
     assert (await api.delete(f"/api/threads/{tid}")).status_code == 204
     assert not archive.thread_dir(cfg.archive_dir, "g", 9).exists()
+
+
+async def test_disabled_thread_is_skipped_by_the_worker_until_re_enabled(
+        api, client, cfg, fake, now):
+    from datetime import timedelta
+
+    fake.set_thread("g", 77, [{"no": 77, "com": "first"}])
+    tid = (await api.post("/api/threads", json={"url": "g/77"})).json()["id"]
+    conn = connect(cfg.db_path)
+    await worker.tick(conn, client, cfg, now)
+    assert archive.load_thread(cfg.archive_dir, "g", 77)["posts"][0]["com"] == "first"
+
+    # Pozastavíme a mezitím na 4chanu přibude post.
+    assert (await api.patch(f"/api/threads/{tid}", json={"enabled": False})).status_code == 200
+    fake.set_thread("g", 77, [{"no": 77, "com": "first"}, {"no": 78, "com": "second"}])
+
+    later = now + timedelta(hours=1)
+    result = await worker.tick(conn, client, cfg, later)
+    assert result["poll"] == {"updated": 0, "unchanged": 0, "dead": 0, "error": 0}
+    posts = archive.load_thread(cfg.archive_dir, "g", 77)["posts"]
+    assert [p["no"] for p in posts] == [77]        # nový post nepřibyl
+    assert (directory := archive.thread_dir(cfg.archive_dir, "g", 77)).exists()
+
+    # Po obnovení se dotáhne to, co mezitím uteklo.
+    assert (await api.patch(f"/api/threads/{tid}", json={"enabled": True})).status_code == 200
+    await worker.tick(conn, client, cfg, later + timedelta(minutes=1))
+    posts = archive.load_thread(cfg.archive_dir, "g", 77)["posts"]
+    assert [p["no"] for p in posts] == [77, 78]
+    assert repo.get_thread(conn, tid)["status"] == "live"
+    conn.close()

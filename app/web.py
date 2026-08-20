@@ -20,6 +20,10 @@ class ThreadIn(BaseModel):
     url: str
 
 
+class ThreadPatch(BaseModel):
+    enabled: bool
+
+
 def thread_json(row: sqlite3.Row, media_failed: int = 0) -> dict:
     data = {k: row[k] for k in (
         "id", "board", "no", "subject", "status", "source", "first_seen",
@@ -115,6 +119,23 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
         archive.delete_thread_dir(cfg.archive_dir, row["board"], row["no"])
         repo.delete_thread(conn, thread_id)
         return Response(status_code=204)
+
+    @app.patch("/api/threads/{thread_id}")
+    def patch_thread(thread_id: int, payload: ThreadPatch, conn=Depends(get_conn)):
+        row = repo.get_thread(conn, thread_id)
+        if row is None:
+            raise HTTPException(404, "thread not found")
+        changed = repo.set_thread_enabled(
+            conn, thread_id, enabled=payload.enabled, now=now(),
+            poll_interval=cfg.poll_min_interval)
+        if not changed:
+            # Buď je thread mrtvý — ten se oživit nedá — nebo už v cílovém
+            # stavu je. Obojí je pro klienta konflikt, ne tichý úspěch.
+            raise HTTPException(
+                409, f"thread is {row['status']}, cannot be"
+                     f" {'enabled' if payload.enabled else 'disabled'}")
+        failed = repo.failed_media_counts(conn, [thread_id]).get(thread_id, 0)
+        return thread_json(repo.get_thread(conn, thread_id), failed)
 
     @app.post("/api/threads/{thread_id}/retry")
     def retry_media(thread_id: int, conn=Depends(get_conn)):

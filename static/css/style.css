@@ -75,7 +75,8 @@ th { background: var(--panel); }
   td { border: none; display: flex; gap: 10px; padding: 5px 8px; }
   td::before { content: attr(data-label); font-weight: bold;
                flex: 0 0 38%; color: var(--muted); }
-  td:not([data-label]) { justify-content: flex-start; gap: 8px; }
+  /* Akční buňka nese až tři tlačítka; bez zalomení třetí uteče z karty. */
+  td:not([data-label]) { justify-content: flex-start; gap: 6px; flex-wrap: wrap; }
   td input[type=text] { flex: 1 1 auto; min-width: 0; }
   /* Na kartě má pole celou šířku a Save se zalomí pod něj. */
   .kw-input { flex: 1 1 100%; }

@@ -82,6 +82,29 @@ def mark_dead(conn, thread_id, now: datetime) -> None:
     )
 
 
+def set_thread_enabled(conn, thread_id, *, enabled: bool, now: datetime,
+                       poll_interval: int) -> bool:
+    """Pozastaví nebo obnoví pollování threadu; archiv zůstává nedotčený.
+
+    Přechod je povolen jen mezi 'disabled' a živými stavy — mrtvý thread
+    oživit nelze, 4chan ho už nevrací. Vrací False, když byl thread ve stavu,
+    ze kterého přechod nedává smysl; podmínka je součástí UPDATE, takže dva
+    souběžné požadavky nemůžou stav přepsat jeden druhému.
+    """
+    if enabled:
+        # Obnovení je čistý restart: fail_count i chyba z minula jdou pryč,
+        # ať se thread rovnou zkusí a nezdědí starý backoff.
+        cur = conn.execute(
+            "UPDATE threads SET status='live', next_poll_at=?, poll_interval=?,"
+            " fail_count=0, last_error=NULL WHERE id=? AND status='disabled'",
+            (iso(now), poll_interval, thread_id))
+    else:
+        cur = conn.execute(
+            "UPDATE threads SET status='disabled' WHERE id=?"
+            " AND status IN ('live', 'error')", (thread_id,))
+    return cur.rowcount > 0
+
+
 def mark_failure(conn, thread_id, *, now, error, next_poll_at, poll_interval) -> None:
     conn.execute(
         "UPDATE threads SET fail_count = fail_count + 1, last_error=?,"
@@ -195,7 +218,7 @@ def recompute_thread_bytes(conn, thread_id) -> None:
 
 
 def stats(conn) -> dict:
-    counts = {"live": 0, "dead": 0, "error": 0}
+    counts = {"live": 0, "dead": 0, "error": 0, "disabled": 0}
     for row in conn.execute("SELECT status, COUNT(*) c FROM threads GROUP BY status"):
         counts[row["status"]] = row["c"]
     row = conn.execute(

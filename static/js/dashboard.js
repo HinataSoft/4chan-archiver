@@ -1,4 +1,4 @@
-import { appUrl, del, formatBytes, formatTime, getJSON, postJSON } from "./api.js";
+import { appUrl, del, formatBytes, formatTime, getJSON, patchJSON, postJSON } from "./api.js";
 
 const tbody = document.getElementById("threads");
 const addError = document.getElementById("add-error");
@@ -29,6 +29,7 @@ async function loadStats() {
     `live: <b>${s.threads.live}</b>`,
     `dead: <b>${s.threads.dead}</b>`,
     `error: <b>${s.threads.error}</b>`,
+    `disabled: <b>${s.threads.disabled}</b>`,
     `media: <b>${formatBytes(s.media_bytes)}</b>`,
     `pending: <b>${s.media_pending}</b>`,
     `failed: <b>${s.media_failed}</b>`,
@@ -56,6 +57,7 @@ function cell(row, text, label) {
 const MARKS = {
   dead: { glyph: "💀", label: "thread was deleted from 4chan" },
   error: { glyph: "⚠️", label: "polling is failing" },
+  disabled: { glyph: "⏸", label: "polling is paused" },
 };
 
 function renderThread(t) {
@@ -82,6 +84,21 @@ function renderThread(t) {
   cell(tr, t.post_count, "Posts");
 
   const actions = cell(tr, "");
+  // Mrtvý thread se nepolluje tak jako tak, takže mu pauza nemá co nabídnout.
+  if (t.status !== "dead") {
+    const paused = t.status === "disabled";
+    const toggle = document.createElement("button");
+    toggle.textContent = paused ? "Enable" : "Disable";
+    toggle.title = paused
+      ? "resume polling this thread"
+      : "keep the archive but stop polling for new posts";
+    toggle.onclick = () => run(async () => {
+      await patchJSON(`/api/threads/${t.id}`, { enabled: paused });
+      await refresh();
+    });
+    actions.appendChild(toggle);
+  }
+
   const remove = document.createElement("button");
   remove.textContent = "Delete";
   remove.onclick = () => run(async () => {
