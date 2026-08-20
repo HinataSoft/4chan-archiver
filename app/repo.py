@@ -10,15 +10,41 @@ def iso(dt: datetime) -> str:
 
 
 def add_thread(conn, board: str, no: int, source: str, now: datetime) -> int | None:
+    """Zavede thread ke stahování. Vrací None, když už existuje nebo když byl
+    dřív smazaný a je na seznamu ignorovaných — scanner nesmí vracet zpátky
+    to, co uživatel smazal. Ruční vložení URL ignorování napřed zruší.
+
+    Podmínka je součástí INSERTu, ne odděleným dotazem, aby mezi kontrolou
+    a zápisem nebyla mezera.
+    """
     cur = conn.execute(
         "INSERT OR IGNORE INTO threads"
         " (board, no, status, source, first_seen, next_poll_at, poll_interval)"
-        " VALUES (?, ?, 'live', ?, ?, ?, 60)",
-        (board, no, source, iso(now), iso(now)),
+        " SELECT ?, ?, 'live', ?, ?, ?, 60"
+        " WHERE NOT EXISTS (SELECT 1 FROM ignored_threads WHERE board=? AND no=?)",
+        (board, no, source, iso(now), iso(now), board, no),
     )
     if cur.rowcount == 0:
         return None
     return cur.lastrowid
+
+
+def ignore_thread(conn, board: str, no: int, now: datetime) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO ignored_threads (board, no, created_at)"
+        " VALUES (?, ?, ?)", (board, no, iso(now)))
+
+
+def unignore_thread(conn, board: str, no: int) -> bool:
+    cur = conn.execute(
+        "DELETE FROM ignored_threads WHERE board = ? AND no = ?", (board, no))
+    return cur.rowcount > 0
+
+
+def is_ignored(conn, board: str, no: int) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM ignored_threads WHERE board = ? AND no = ?",
+        (board, no)).fetchone() is not None
 
 
 def find_thread(conn, board: str, no: int) -> sqlite3.Row | None:
@@ -225,12 +251,15 @@ def stats(conn) -> dict:
         "SELECT COALESCE(SUM(bytes), 0) b,"
         " SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) f,"
         " SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) p FROM media").fetchone()
+    ignored = conn.execute(
+        "SELECT COUNT(*) c FROM ignored_threads").fetchone()["c"]
     last = conn.execute("SELECT MAX(last_polled) m FROM threads").fetchone()["m"]
     errors = conn.execute(
         "SELECT id, board, no, last_error FROM threads"
         " WHERE last_error IS NOT NULL ORDER BY last_polled DESC LIMIT 10").fetchall()
     return {
         "threads": counts,
+        "ignored": ignored,
         "media_bytes": row["b"],
         "media_failed": row["f"] or 0,
         "media_pending": row["p"] or 0,

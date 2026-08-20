@@ -245,3 +245,42 @@ def test_disabled_threads_are_counted_in_stats(conn, now):
 
     s = repo.stats(conn)
     assert s["threads"] == {"live": 1, "dead": 0, "error": 0, "disabled": 1}
+
+
+def test_a_deleted_thread_is_not_re_added_by_a_rule(conn, now):
+    tid = repo.add_thread(conn, "g", 900, "rule:1", now)
+    repo.delete_thread(conn, tid)
+    repo.ignore_thread(conn, "g", 900, now)
+
+    assert repo.add_thread(conn, "g", 900, "rule:1", now) is None
+    assert repo.find_thread(conn, "g", 900) is None
+
+
+def test_adding_the_url_by_hand_lifts_the_tombstone(conn, now):
+    repo.ignore_thread(conn, "g", 900, now)
+    assert repo.is_ignored(conn, "g", 900) is True
+
+    assert repo.unignore_thread(conn, "g", 900) is True
+    assert repo.is_ignored(conn, "g", 900) is False
+    assert repo.add_thread(conn, "g", 900, "manual", now) is not None
+
+
+def test_a_tombstone_only_covers_its_own_thread(conn, now):
+    repo.ignore_thread(conn, "g", 900, now)
+    assert repo.add_thread(conn, "g", 901, "rule:1", now) is not None   # jiné číslo
+    assert repo.add_thread(conn, "b", 900, "rule:1", now) is not None   # jiný board
+
+
+def test_ignoring_twice_is_harmless(conn, now):
+    repo.ignore_thread(conn, "g", 900, now)
+    repo.ignore_thread(conn, "g", 900, now)
+    assert repo.stats(conn)["ignored"] == 1
+    assert repo.unignore_thread(conn, "g", 900) is True
+    assert repo.unignore_thread(conn, "g", 900) is False
+
+
+def test_ignored_threads_are_counted_in_stats(conn, now):
+    assert repo.stats(conn)["ignored"] == 0
+    repo.ignore_thread(conn, "g", 900, now)
+    repo.ignore_thread(conn, "b", 901, now)
+    assert repo.stats(conn)["ignored"] == 2

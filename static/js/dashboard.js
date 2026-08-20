@@ -30,6 +30,7 @@ async function loadStats() {
     `dead: <b>${s.threads.dead}</b>`,
     `error: <b>${s.threads.error}</b>`,
     `disabled: <b>${s.threads.disabled}</b>`,
+    `ignored: <b>${s.ignored}</b>`,
     `media: <b>${formatBytes(s.media_bytes)}</b>`,
     `pending: <b>${s.media_pending}</b>`,
     `failed: <b>${s.media_failed}</b>`,
@@ -109,7 +110,9 @@ function renderThread(t) {
   const remove = document.createElement("button");
   remove.textContent = "Delete";
   remove.onclick = () => run(async () => {
-    if (!confirm(`Delete ${t.board}/${t.no} including its media?`)) return;
+    if (!confirm(`Delete ${t.board}/${t.no} including its media?
+
+Rules will not add it back. Pasting its URL again would.`)) return;
     await del(`/api/threads/${t.id}`);
     await refresh();
   });

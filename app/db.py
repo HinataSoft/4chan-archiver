@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS media (
 
 CREATE INDEX IF NOT EXISTS idx_media_pending ON media (status)
   WHERE status = 'pending';
+
+-- Náhrobky po smazaných threadech. Bez nich by scanner vrátil zpátky každý
+-- thread, který uživatel smazal, ale který na boardu pořád žije a matchuje
+-- pravidlo — mazání by u takového threadu bylo jen dočasné.
+CREATE TABLE IF NOT EXISTS ignored_threads (
+  board      TEXT NOT NULL,
+  no         INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (board, no)
+);
 """
 
 

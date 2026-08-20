@@ -96,6 +96,9 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
             ref = parse_thread_url(payload.url)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
+        # Vložení URL ručně je výslovná žádost, takže přebíjí dřívější smazání:
+        # náhrobek se zruší, jinak by add_thread odmítl vložit.
+        repo.unignore_thread(conn, ref.board, ref.no)
         thread_id = repo.add_thread(conn, ref.board, ref.no, "manual", now())
         if thread_id is None:
             raise HTTPException(409, f"thread {ref.board}/{ref.no} is already tracked")
@@ -118,6 +121,9 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
             raise HTTPException(404, "thread not found")
         archive.delete_thread_dir(cfg.archive_dir, row["board"], row["no"])
         repo.delete_thread(conn, thread_id)
+        # Náhrobek, aby ho scanner nezavedl znovu, dokud thread na boardu žije
+        # a matchuje pravidlo. Ruční vložení URL ho zase zruší.
+        repo.ignore_thread(conn, row["board"], row["no"], now())
         return Response(status_code=204)
 
     @app.patch("/api/threads/{thread_id}")

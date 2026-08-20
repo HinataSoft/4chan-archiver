@@ -135,3 +135,48 @@ async def test_disabled_thread_is_skipped_by_the_worker_until_re_enabled(
     assert [p["no"] for p in posts] == [77, 78]
     assert repo.get_thread(conn, tid)["status"] == "live"
     conn.close()
+
+
+async def test_deleting_a_live_matching_thread_keeps_it_gone(api, client, cfg, fake, now):
+    """Thread smazaný uživatelem se nesmí vrátit jen proto, že na boardu pořád
+    žije a matchuje pravidlo — jinak je mazání u takového threadu dočasné."""
+    from datetime import timedelta
+
+    fake.set_catalog("g", [{"no": 900, "sub": "Rust General", "com": "safety"}])
+    fake.set_thread("g", 900, [{"no": 900, "sub": "Rust General", "com": "safety"}])
+    await api.post("/api/rules", json={"board": "g", "keywords": ["rust"]})
+
+    conn = connect(cfg.db_path)
+    await worker.tick(conn, client, cfg, now)
+    tid = repo.find_thread(conn, "g", 900)["id"]
+    assert archive.thread_dir(cfg.archive_dir, "g", 900).exists()
+
+    assert (await api.delete(f"/api/threads/{tid}")).status_code == 204
+
+    # Board se nezměnil, thread pořád matchuje — a přesto musí zůstat pryč.
+    await worker.tick(conn, client, cfg, now + timedelta(hours=1))
+    assert repo.find_thread(conn, "g", 900) is None
+    assert not archive.thread_dir(cfg.archive_dir, "g", 900).exists()
+    assert (await api.get("/api/stats")).json()["ignored"] == 1
+    conn.close()
+
+
+async def test_adding_the_url_by_hand_overrides_an_earlier_delete(api, client, cfg, fake, now):
+    from datetime import timedelta
+
+    fake.set_catalog("g", [{"no": 901, "sub": "Rust General", "com": "safety"}])
+    fake.set_thread("g", 901, [{"no": 901, "sub": "Rust General", "com": "safety"}])
+    await api.post("/api/rules", json={"board": "g", "keywords": ["rust"]})
+
+    conn = connect(cfg.db_path)
+    await worker.tick(conn, client, cfg, now)
+    tid = repo.find_thread(conn, "g", 901)["id"]
+    await api.delete(f"/api/threads/{tid}")
+
+    resp = await api.post("/api/threads", json={"url": "g/901"})
+    assert resp.status_code == 201
+    assert (await api.get("/api/stats")).json()["ignored"] == 0
+
+    await worker.tick(conn, client, cfg, now + timedelta(hours=1))
+    assert archive.load_thread(cfg.archive_dir, "g", 901)["posts"][0]["no"] == 901
+    conn.close()

@@ -334,3 +334,15 @@ async def test_disabling_keeps_the_archive_on_disk(api, cfg, now):
 
     await api.patch(f"/api/threads/{tid}", json={"enabled": False})
     assert (directory / "thread.json").exists()
+
+
+async def test_delete_records_a_tombstone_and_readd_clears_it(api):
+    tid = (await api.post("/api/threads", json={"url": "g/5150"})).json()["id"]
+    assert (await api.get("/api/stats")).json()["ignored"] == 0
+
+    await api.delete(f"/api/threads/{tid}")
+    assert (await api.get("/api/stats")).json()["ignored"] == 1
+
+    again = await api.post("/api/threads", json={"url": "g/5150"})
+    assert again.status_code == 201
+    assert (await api.get("/api/stats")).json()["ignored"] == 0
