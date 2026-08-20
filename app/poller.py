@@ -41,6 +41,33 @@ def _excerpt(text: str) -> str | None:
     return cut.rstrip(" ,.;:-") + "…"
 
 
+def backfill_missing_subjects(conn, cfg: Config) -> int:
+    """Dopočítá chybějící názvy threadů z archivu na disku.
+
+    Název se jinak odvozuje jen ve chvíli, kdy poll přinese nový obsah. Thread
+    stažený dřív, než fallback z textu OP existoval, tak zůstane bez názvu
+    napořád: dokud se nezmění, vrací 4chan 304, a mrtvý thread se nepolluje
+    vůbec. Posty přitom leží v thread.json, takže stačí sáhnout tam.
+
+    Pouští se jednorázově při startu workeru a je idempotentní.
+    """
+    rows = conn.execute(
+        "SELECT id, board, no FROM threads WHERE subject IS NULL").fetchall()
+    filled = 0
+    for row in rows:
+        doc = archive.load_thread(cfg.archive_dir, row["board"], row["no"])
+        if doc is None:
+            continue
+        subject = _subject(doc.get("posts", []))
+        if not subject:
+            continue
+        repo.set_subject(conn, row["id"], subject)
+        filled += 1
+    if filled:
+        log.info("doplněno %s chybějících názvů z archivu", filled)
+    return filled
+
+
 async def _poll_once(conn, client, cfg: Config, row, now: datetime) -> str:
     board, no = row["board"], row["no"]
     resp = await client.fetch_thread(board, no, row["last_modified"])

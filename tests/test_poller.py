@@ -205,3 +205,62 @@ async def test_text_only_op_with_no_subject_and_no_text_stays_empty(conn, client
     tid = repo.add_thread(conn, "g", 504, "manual", now)
     await poller.poll_thread(conn, client, cfg, repo.get_thread(conn, tid), now)
     assert repo.get_thread(conn, tid)["subject"] is None
+
+
+def _archived(cfg, board, no, posts, now):
+    doc = archive.new_document(board, no, now)
+    doc["posts"] = posts
+    archive.save_thread(cfg.archive_dir, doc)
+
+
+async def test_backfill_fills_subjects_from_the_archive(conn, cfg, now):
+    """Thready stažené dřív, než fallback existoval, mají subject prázdný.
+    Beze změny obsahu vrací 4chan 304, takže by ho poll nikdy nedoplnil —
+    ale posty leží v archivu a dají se z nich odvodit."""
+    tid = repo.add_thread(conn, "g", 700, "manual", now)
+    _archived(cfg, "g", 700, [{"no": 700, "com": "anyone here running Zig in prod?"}], now)
+    repo.mark_polled(conn, tid, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified="Mon, 17 Aug 2026 12:00:00 GMT", post_count=1,
+                     subject=None)
+    assert repo.get_thread(conn, tid)["subject"] is None
+
+    assert poller.backfill_missing_subjects(conn, cfg) == 1
+    assert repo.get_thread(conn, tid)["subject"] == "anyone here running Zig in prod?"
+
+
+async def test_backfill_reaches_dead_threads_too(conn, cfg, now):
+    """Mrtvý thread se nepolluje, takže tudy je jediná cesta, jak ho dorovnat."""
+    tid = repo.add_thread(conn, "g", 701, "manual", now)
+    _archived(cfg, "g", 701, [{"no": 701, "com": "thread that got nuked"}], now)
+    repo.mark_polled(conn, tid, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject=None)
+    repo.mark_dead(conn, tid, now)
+
+    assert poller.backfill_missing_subjects(conn, cfg) == 1
+    assert repo.get_thread(conn, tid)["subject"] == "thread that got nuked"
+
+
+async def test_backfill_leaves_an_existing_subject_alone(conn, cfg, now):
+    tid = repo.add_thread(conn, "g", 702, "manual", now)
+    _archived(cfg, "g", 702, [{"no": 702, "sub": "Real Subject", "com": "text"}], now)
+    repo.mark_polled(conn, tid, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject="Real Subject")
+
+    assert poller.backfill_missing_subjects(conn, cfg) == 0
+    assert repo.get_thread(conn, tid)["subject"] == "Real Subject"
+
+
+async def test_backfill_survives_a_missing_archive(conn, cfg, now):
+    """Thread zavedený, ale ještě nikdy nestažený — na disku nic není."""
+    repo.add_thread(conn, "g", 703, "manual", now)
+    assert poller.backfill_missing_subjects(conn, cfg) == 0
+
+
+async def test_backfill_is_idempotent(conn, cfg, now):
+    tid = repo.add_thread(conn, "g", 704, "manual", now)
+    _archived(cfg, "g", 704, [{"no": 704, "com": "some text"}], now)
+    repo.mark_polled(conn, tid, now=now, next_poll_at=now, poll_interval=60,
+                     last_modified=None, post_count=1, subject=None)
+
+    assert poller.backfill_missing_subjects(conn, cfg) == 1
+    assert poller.backfill_missing_subjects(conn, cfg) == 0

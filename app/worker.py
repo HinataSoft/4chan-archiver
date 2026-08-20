@@ -35,6 +35,9 @@ async def run(cfg: Config, *, iterations: int | None = None) -> None:
     conn = connect(cfg.db_path)
     client = _make_client(cfg)
     log.info("worker běží, data v %s", cfg.data_dir)
+    # Jednorázově dorovná názvy threadů stažených dřív, než se odvozovaly
+    # z textu OP; poll sám by se k nim nedostal, dokud se thread nezmění.
+    poller.backfill_missing_subjects(conn, cfg)
     done = 0
     try:
         while iterations is None or done < iterations:

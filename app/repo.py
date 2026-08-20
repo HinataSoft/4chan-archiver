@@ -93,6 +93,10 @@ def mark_polled(conn, thread_id, *, now, next_poll_at, poll_interval,
     )
 
 
+def set_subject(conn, thread_id, subject: str) -> None:
+    conn.execute("UPDATE threads SET subject = ? WHERE id = ?", (subject, thread_id))
+
+
 def mark_unchanged(conn, thread_id, *, now, next_poll_at, poll_interval) -> None:
     conn.execute(
         "UPDATE threads SET status='live', last_polled=?, next_poll_at=?,"
