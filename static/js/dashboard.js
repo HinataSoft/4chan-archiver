@@ -81,7 +81,14 @@ function renderThread(t) {
   }
   subject.append(t.subject || "—");
 
-  cell(tr, t.post_count, "Posts");
+  // Číslo samo stačí pod hlavičkou "Posts"; na úzké kartě hlavička není,
+  // takže se k němu přidá jednotka, kterou tam CSS odkryje.
+  const posts = cell(tr, "", "Posts");
+  posts.append(String(t.post_count));
+  const unit = document.createElement("span");
+  unit.className = "posts-unit";
+  unit.textContent = t.post_count === 1 ? " post" : " posts";
+  posts.appendChild(unit);
 
   const actions = cell(tr, "");
   // Mrtvý thread se nepolluje tak jako tak, takže mu pauza nemá co nabídnout.
