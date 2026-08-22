@@ -24,6 +24,11 @@ class ThreadPatch(BaseModel):
     enabled: bool
 
 
+class ArchiveIn(BaseModel):
+    thread_no: int
+    post_no: int
+
+
 def thread_json(row: sqlite3.Row, media_failed: int = 0) -> dict:
     data = {k: row[k] for k in (
         "id", "board", "no", "subject", "status", "source", "first_seen",
@@ -148,6 +153,38 @@ def create_app(cfg: Config, now_fn=None) -> FastAPI:
         if repo.get_thread(conn, thread_id) is None:
             raise HTTPException(404, "thread not found")
         return {"requeued": repo.retry_failed_media(conn, thread_id)}
+
+    @app.get("/api/archive")
+    def list_archive(conn=Depends(get_conn)):
+        return {"boards": archive.archived_boards(cfg.archive_dir)}
+
+    @app.post("/api/archive/{board}", status_code=201)
+    def archive_post(board: str, payload: ArchiveIn, conn=Depends(get_conn)):
+        if not BOARD_RE.match(board):
+            raise HTTPException(400, f"invalid board name: {board!r}")
+        source = archive.load_thread(cfg.archive_dir, board, payload.thread_no)
+        if source is None:
+            raise HTTPException(404, f"thread {board}/{payload.thread_no} is not archived")
+        post = next((p for p in source["posts"] if p["no"] == payload.post_no), None)
+        if post is None:
+            raise HTTPException(404, f"post {payload.post_no} is not in that thread")
+
+        row = repo.find_thread(conn, board, payload.thread_no)
+        added = archive.archive_post(
+            cfg.archive_dir, board, payload.thread_no, post,
+            source_subject=row["subject"] if row else source["posts"][0].get("sub"),
+            now=now())
+        if not added:
+            raise HTTPException(409, f"post {payload.post_no} is already archived")
+        return {"board": board, "post_no": payload.post_no}
+
+    @app.delete("/api/archive/{board}/{post_no}", status_code=204)
+    def unarchive_post(board: str, post_no: int, conn=Depends(get_conn)):
+        if not BOARD_RE.match(board):
+            raise HTTPException(400, f"invalid board name: {board!r}")
+        if not archive.unarchive_post(cfg.archive_dir, board, post_no):
+            raise HTTPException(404, f"post {post_no} is not archived")
+        return Response(status_code=204)
 
     @app.get("/api/rules")
     def list_rules(conn=Depends(get_conn)):

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archive — 4chan archive</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <h1>Archived posts</h1>
+  <nav><a href="./">Threads</a><a href="rules.html">Rules</a><a href="archive.html">Archive</a></nav>
+
+  <div class="panel">
+    <p>Posts you kept from individual threads, one archive per board. A copy
+       stays here — with its media — even after the thread it came from is
+       deleted.</p>
+    <div class="error" id="error"></div>
+  </div>
+
+  <table>
+    <thead><tr><th>Board</th><th>Posts</th></tr></thead>
+    <tbody id="boards"></tbody>
+  </table>
+
+  <script type="module" src="js/archive.js"></script>
+</body>
+</html>

@@ -48,6 +48,14 @@ th { background: var(--panel); }
 #preview { position: absolute; z-index: 50; max-width: 500px;
            box-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
 
+/* Archivace jednotlivých příspěvků: tlačítko v hlavičce postu a původ kopie. */
+.post-action { margin-left: 8px; }
+.post-action button { font-size: 11px; padding: 1px 6px; }
+.post-action-ok { font-size: 11px; color: var(--name); }
+.post-action-err { font-size: 11px; color: var(--dead); }
+.post-origin { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+
+
 /* ── Mobil ────────────────────────────────────────────────────────────────
    Bez <meta name="viewport"> renderuje mobilní prohlížeč na ~980 px a stránku
    zmenší; ten tag je v HTML a tohle je zbytek: na úzkém displeji se tabulky
@@ -111,6 +119,10 @@ th { background: var(--panel); }
                                   display: flex; flex-direction: column;
                                   align-items: stretch; gap: 4px;
                                   flex-wrap: nowrap; }
+
+  /* Archivační tlačítko je v hlavičce postu drobné; na dotyk potřebuje
+     větší cíl, jinak se do něj netrefíš. */
+  .post-action button { padding: 6px 10px; font-size: 13px; }
 
   /* Post zabere šířku displeje místo šířky svého obsahu. */
   .post { display: block; }

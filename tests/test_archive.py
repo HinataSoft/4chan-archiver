@@ -136,3 +136,100 @@ def test_media_entries_rejects_path_traversal_in_ext():
         {"no": 7, "tim": 777, "ext": ".toolongext"},
     ]
     assert archive.media_entries(hostile) == []
+
+
+# ── Archiv jednotlivých příspěvků ────────────────────────────────────────────
+
+def _source_thread(cfg, now, posts, media_files=()):
+    doc = archive.new_document("g", 123, now)
+    doc["posts"] = posts
+    archive.save_thread(cfg.archive_dir, doc)
+    directory = archive.thread_dir(cfg.archive_dir, "g", 123)
+    for name, payload in media_files:
+        (directory / name).write_bytes(payload)
+    return doc
+
+
+def test_archiving_a_post_copies_it_into_the_board_archive(cfg, now):
+    _source_thread(cfg, now, [{"no": 1, "com": "op"}, {"no": 2, "com": "keep me"}])
+
+    assert archive.archive_post(cfg.archive_dir, "g", 123, {"no": 2, "com": "keep me"},
+                                source_subject="Some Thread", now=now) is True
+
+    doc = archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)
+    assert [p["no"] for p in doc["posts"]] == [2]
+    assert doc["posts"][0]["com"] == "keep me"
+
+
+def test_archived_post_records_where_it_came_from(cfg, now):
+    _source_thread(cfg, now, [{"no": 2, "com": "keep me"}])
+    archive.archive_post(cfg.archive_dir, "g", 123, {"no": 2, "com": "keep me"},
+                         source_subject="Daily Programming", now=now)
+
+    post = archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"][0]
+    assert post["_source_thread"] == 123
+    assert post["_source_subject"] == "Daily Programming"
+    assert post["_archived_at"] == now.isoformat()
+
+
+def test_media_are_copied_so_the_archive_survives_deleting_the_thread(cfg, now):
+    _source_thread(cfg, now, [{"no": 2, "tim": 555, "ext": ".jpg"}],
+                   media_files=[("555.jpg", b"full"), ("555s.jpg", b"thumb")])
+
+    archive.archive_post(cfg.archive_dir, "g", 123, {"no": 2, "tim": 555, "ext": ".jpg"},
+                         source_subject=None, now=now)
+    archive.delete_thread_dir(cfg.archive_dir, "g", 123)
+
+    directory = archive.thread_dir(cfg.archive_dir, "g", archive.ARCHIVE_NO)
+    assert (directory / "555.jpg").read_bytes() == b"full"
+    assert (directory / "555s.jpg").read_bytes() == b"thumb"
+
+
+def test_archiving_the_same_post_twice_changes_nothing(cfg, now):
+    _source_thread(cfg, now, [{"no": 2, "com": "keep me"}])
+    post = {"no": 2, "com": "keep me"}
+
+    assert archive.archive_post(cfg.archive_dir, "g", 123, post,
+                                source_subject=None, now=now) is True
+    assert archive.archive_post(cfg.archive_dir, "g", 123, post,
+                                source_subject=None, now=now) is False
+    assert len(archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"]) == 1
+
+
+def test_archive_is_ordered_by_the_original_post_date(cfg, now):
+    _source_thread(cfg, now, [])
+    for no, time in [(30, 300), (10, 100), (20, 200)]:
+        archive.archive_post(cfg.archive_dir, "g", 123, {"no": no, "time": time},
+                             source_subject=None, now=now)
+
+    posts = archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"]
+    assert [p["time"] for p in posts] == [100, 200, 300]
+
+
+def test_removing_an_archived_post_takes_its_media_with_it(cfg, now):
+    _source_thread(cfg, now, [{"no": 2, "tim": 555, "ext": ".jpg"}],
+                   media_files=[("555.jpg", b"full"), ("555s.jpg", b"thumb")])
+    archive.archive_post(cfg.archive_dir, "g", 123, {"no": 2, "tim": 555, "ext": ".jpg"},
+                         source_subject=None, now=now)
+
+    assert archive.unarchive_post(cfg.archive_dir, "g", 2) is True
+    directory = archive.thread_dir(cfg.archive_dir, "g", archive.ARCHIVE_NO)
+    assert not (directory / "555.jpg").exists()
+    assert not (directory / "555s.jpg").exists()
+    assert archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"] == []
+
+
+def test_removing_a_post_that_is_not_archived_reports_it(cfg, now):
+    _source_thread(cfg, now, [])
+    assert archive.unarchive_post(cfg.archive_dir, "g", 999) is False
+
+
+def test_archived_boards_lists_what_has_something_in_it(cfg, now):
+    _source_thread(cfg, now, [])
+    assert archive.archived_boards(cfg.archive_dir) == []
+
+    archive.archive_post(cfg.archive_dir, "g", 123, {"no": 2, "time": 1},
+                         source_subject=None, now=now)
+    archive.archive_post(cfg.archive_dir, "g", 123, {"no": 3, "time": 2},
+                         source_subject=None, now=now)
+    assert archive.archived_boards(cfg.archive_dir) == [{"board": "g", "posts": 2}]

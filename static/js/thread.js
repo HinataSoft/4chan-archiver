@@ -1,4 +1,4 @@
-import { appUrl, formatBytes } from "./api.js";
+import { appUrl, del, formatBytes, postJSON } from "./api.js";
 import { quotedNumbers, renderComment } from "./comment.js";
 
 const params = new URLSearchParams(location.search);
@@ -8,6 +8,43 @@ const postsEl = document.getElementById("posts");
 const previewEl = document.getElementById("preview");
 
 const VIDEO = new Set([".webm", ".mp4"]);
+
+// Archiv boardu je pseudo-thread s číslem 0. Nula proto, že skutečná 4chan ID
+// jsou velká čísla, takže projde všude, kde se číslo threadu očekává.
+const ARCHIVE_NO = 0;
+const viewingArchive = no === ARCHIVE_NO;
+
+function postAction(post) {
+  const wrap = document.createElement("span");
+  wrap.className = "post-action";
+  const button = document.createElement("button");
+  button.textContent = viewingArchive ? "Remove" : "Archive";
+  button.title = viewingArchive
+    ? "remove this post from the board archive"
+    : "keep a copy of this post, with its media, in the board archive";
+  const say = (text, ok) => {
+    const note = document.createElement("span");
+    note.className = ok ? "post-action-ok" : "post-action-err";
+    note.textContent = text;
+    wrap.replaceChildren(note);
+  };
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      if (viewingArchive) {
+        await del(`/api/archive/${board}/${post.no}`);
+        document.getElementById(`p${post.no}`)?.remove();
+        return;
+      }
+      await postJSON(`/api/archive/${board}`, { thread_no: no, post_no: post.no });
+      say("archived", true);
+    } catch (err) {
+      say(err.message, false);
+    }
+  };
+  wrap.appendChild(button);
+  return wrap;
+}
 
 function mediaBase(post) {
   return appUrl(`archive/${board}/${no}/${post.tim}`);
@@ -107,7 +144,20 @@ function renderPost(post, index, knownPosts, backlinks, mediaState) {
     note.textContent = "[deleted by moderator]";
     header.appendChild(note);
   }
+  header.appendChild(postAction(post));
   el.appendChild(header);
+
+  if (viewingArchive && post._source_thread) {
+    const origin = document.createElement("div");
+    origin.className = "post-origin";
+    origin.append("From ");
+    const link = document.createElement("a");
+    link.href = appUrl(`thread.html?b=${encodeURIComponent(board)}&no=${post._source_thread}`);
+    link.textContent = `/${board}/${post._source_thread}`;
+    origin.appendChild(link);
+    if (post._source_subject) origin.append(` — ${post._source_subject}`);
+    el.appendChild(origin);
+  }
 
   const replies = backlinks.get(post.no);
   if (replies && replies.length) {
@@ -201,6 +251,12 @@ async function main() {
   let doc;
   try {
     const resp = await fetch(appUrl(`archive/${board}/${no}/thread.json`), { cache: "no-cache" });
+    if (resp.status === 404 && viewingArchive) {
+      document.getElementById("title").textContent = `Archived posts from /${board}/ (0)`;
+      document.getElementById("error").textContent =
+        "Nothing archived from this board yet. Use the Archive button on any post.";
+      return;
+    }
     if (!resp.ok) throw new Error(`thread is not in the archive (HTTP ${resp.status})`);
     doc = await resp.json();
   } catch (err) {
@@ -219,10 +275,21 @@ async function main() {
     }
   }
 
-  const subject = posts[0]?.sub || `/${board}/ ${no}`;
-  document.title = `${subject} — 4chan archive`;
-  document.getElementById("title").textContent =
-    `${subject} (/${board}/${no}, ${posts.length} posts${doc.status === "dead" ? ", deleted" : ""})`;
+  if (viewingArchive) {
+    document.title = `/${board}/ archive — 4chan archive`;
+    document.getElementById("title").textContent =
+      `Archived posts from /${board}/ (${posts.length})`;
+  } else {
+    const subject = posts[0]?.sub || `/${board}/ ${no}`;
+    document.title = `${subject} — 4chan archive`;
+    document.getElementById("title").textContent =
+      `${subject} (/${board}/${no}, ${posts.length} posts${doc.status === "dead" ? ", deleted" : ""})`;
+    const nav = document.querySelector("nav");
+    const link = document.createElement("a");
+    link.href = appUrl(`thread.html?b=${encodeURIComponent(board)}&no=${ARCHIVE_NO}`);
+    link.textContent = `/${board}/ archive`;
+    nav.append(" · ", link);
+  }
 
   const mediaState = doc.media || {};
   const rendered = posts.map((p, i) => {

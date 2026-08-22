@@ -346,3 +346,79 @@ async def test_delete_records_a_tombstone_and_readd_clears_it(api):
     again = await api.post("/api/threads", json={"url": "g/5150"})
     assert again.status_code == 201
     assert (await api.get("/api/stats")).json()["ignored"] == 0
+
+
+# ── Archiv jednotlivých příspěvků ────────────────────────────────────────────
+
+def _seed_thread_on_disk(cfg, now, posts):
+    from app import archive
+    doc = archive.new_document("g", 123, now)
+    doc["posts"] = posts
+    archive.save_thread(cfg.archive_dir, doc)
+
+
+async def test_archive_a_post_and_list_it(api, cfg, now):
+    _seed_thread_on_disk(cfg, now, [{"no": 1, "sub": "Daily", "com": "op"},
+                                    {"no": 2, "com": "keep me", "time": 100}])
+
+    resp = await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+    assert resp.status_code == 201
+    assert (await api.get("/api/archive")).json()["boards"] == [{"board": "g", "posts": 1}]
+
+
+async def test_archived_post_keeps_the_source_thread_subject(api, cfg, now):
+    from app import archive
+    _seed_thread_on_disk(cfg, now, [{"no": 1, "sub": "Daily Programming", "com": "op"},
+                                    {"no": 2, "com": "keep me"}])
+    await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+
+    post = archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"][0]
+    assert post["_source_thread"] == 123
+    assert post["_source_subject"] == "Daily Programming"
+
+
+async def test_archiving_the_same_post_twice_is_a_conflict(api, cfg, now):
+    _seed_thread_on_disk(cfg, now, [{"no": 2, "com": "keep me"}])
+    await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+
+    again = await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+    assert again.status_code == 409
+
+
+async def test_archiving_an_unknown_post_or_thread_is_404(api, cfg, now):
+    _seed_thread_on_disk(cfg, now, [{"no": 2, "com": "keep me"}])
+    assert (await api.post("/api/archive/g",
+                           json={"thread_no": 123, "post_no": 999})).status_code == 404
+    assert (await api.post("/api/archive/g",
+                           json={"thread_no": 999, "post_no": 2})).status_code == 404
+
+
+async def test_archive_rejects_a_bad_board_name(api):
+    body = {"thread_no": 1, "post_no": 2}
+    # Board se stává jménem adresáře, takže musí projít stejným sítem jako
+    # u pravidel: jen malá písmena a číslice, nejvýš deset znaků.
+    assert (await api.post("/api/archive/TOOLONGBOARDNAME", json=body)).status_code == 400
+    assert (await api.post("/api/archive/g.evil", json=body)).status_code == 400
+    assert (await api.delete("/api/archive/g.evil/2")).status_code == 400
+    # Zakódované ../ neprojde už routováním, tedy dřív než validátorem.
+    assert (await api.post("/api/archive/..%2Fetc", json=body)).status_code in (400, 404, 405)
+
+
+async def test_unarchive_removes_the_post(api, cfg, now):
+    _seed_thread_on_disk(cfg, now, [{"no": 2, "com": "keep me"}])
+    await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+
+    assert (await api.delete("/api/archive/g/2")).status_code == 204
+    assert (await api.get("/api/archive")).json()["boards"] == []
+    assert (await api.delete("/api/archive/g/2")).status_code == 404
+
+
+async def test_archive_outlives_deleting_the_source_thread(api, cfg, now):
+    from app import archive
+    _seed_thread_on_disk(cfg, now, [{"no": 2, "com": "keep me", "time": 100}])
+    tid = (await api.post("/api/threads", json={"url": "g/123"})).json()["id"]
+    await api.post("/api/archive/g", json={"thread_no": 123, "post_no": 2})
+
+    assert (await api.delete(f"/api/threads/{tid}")).status_code == 204
+    kept = archive.load_thread(cfg.archive_dir, "g", archive.ARCHIVE_NO)["posts"]
+    assert [p["com"] for p in kept] == ["keep me"]
